@@ -32,7 +32,7 @@ interface IdeaCardProps {
   onClick: (idea: Idea) => void;
 }
 
-const statusVariants: Record<IdeaStatus, "default" | "secondary" | "success" | "warning" | "info"> = {
+const statusVariants: Record<IdeaStatus, "default" | "secondary" | "success" | "warning" | "info" | "destructive"> = {
   idea: "secondary",
   researching: "info",
   building: "warning",

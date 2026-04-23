@@ -25,7 +25,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 
-const statusVariants: Record<IdeaStatus, "default" | "secondary" | "success" | "warning" | "info"> = {
+const statusVariants: Record<IdeaStatus, "default" | "secondary" | "success" | "warning" | "info" | "destructive"> = {
   idea: "secondary",
   researching: "info",
   building: "warning",
