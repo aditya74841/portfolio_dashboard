@@ -26,11 +26,18 @@ export async function apiFetch<T>(
     headers,
   });
 
-  const data = await response.json();
-
+  // Log response status for debugging
   if (!response.ok) {
-    throw new Error(data.message || "An error occurred");
+    console.error(`API Error: ${response.status} ${response.statusText} at ${url}`);
   }
 
-  return data.data; // Our ApiResponse structure stores data in .data
+  const data = await response.json().catch(() => {
+    throw new Error(`Failed to parse JSON response from ${url}. The server might be returning an HTML error page.`);
+  });
+
+  if (!response.ok) {
+    throw new Error(data.message || `An error occurred (Status: ${response.status})`);
+  }
+
+  return data.data; 
 }
