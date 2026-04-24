@@ -14,6 +14,8 @@ export interface JournalUpdate {
   qas: QA[];
   update: string;
   mood: "great" | "good" | "okay" | "bad";
+  why?: string;
+  screenTime?: { hours: number; minutes: number; note?: string };
   isPublic: boolean;
   createdAt: string;
   updatedAt: string;
@@ -36,10 +38,11 @@ interface UpdateState {
   fetchUpdates: () => Promise<void>;
   createUpdate: (data: { title?: string; date: string }) => Promise<void>;
   updateTitle: (id: string, title: string) => Promise<void>;
-  updateMood: (id: string, mood: string) => Promise<void>;
+  updateMood: (id: string, mood: string, why?: string) => Promise<void>;
   updateContent: (id: string, update: string) => Promise<void>;
   toggleIsPublic: (id: string) => Promise<void>;
   deleteUpdate: (id: string) => Promise<void>;
+  updateScreenTime: (id: string, hours: number, minutes: number, note?: string) => Promise<void>;
 
   // QA Actions
   addQA: (id: string, question: string, answer?: string) => Promise<void>;
@@ -102,16 +105,16 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
   },
 
-  updateMood: async (id, mood) => {
+  updateMood: async (id, mood, why) => {
     try {
       const updated = await apiFetch<JournalUpdate>(`/update/${id}/mood`, {
         method: "PATCH",
-        body: JSON.stringify({ mood }),
+        body: JSON.stringify({ mood, why }),
       });
       set((state) => ({
         updates: state.updates.map((u) => (u._id === id ? updated : u)),
       }));
-      toast.success(`Mood set to ${mood}`);
+      toast.success(`Mood updated!`);
     } catch (error) {
       toast.error("Failed to update mood.");
     }
@@ -154,6 +157,21 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       toast.success("Journal entry deleted.");
     } catch (error) {
       toast.error("Failed to delete entry.");
+    }
+  },
+
+  updateScreenTime: async (id, hours, minutes, note) => {
+    try {
+      const updated = await apiFetch<JournalUpdate>(`/update/${id}/screen-time`, {
+        method: "PATCH",
+        body: JSON.stringify({ hours, minutes, note }),
+      });
+      set((state) => ({
+        updates: state.updates.map((u) => (u._id === id ? updated : u)),
+      }));
+      toast.success("Screen time updated!");
+    } catch (error) {
+      toast.error("Failed to update screen time.");
     }
   },
 
