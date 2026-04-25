@@ -1,29 +1,48 @@
 import { create } from "zustand";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/api";
+
+export interface SubTodo {
+  _id: string;
+  title: string;
+  description: string;
+  isCompleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface Todo {
-  id: number;
+  _id: string;
   title: string;
-  completed: boolean;
-  userId: number;
+  description: string;
+  isCompleted: boolean;
+  priority: "low" | "medium" | "high";
+  dueDate?: string;
+  subTodos: SubTodo[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface TodoState {
   todos: Todo[];
   isLoading: boolean;
   error: string | null;
-  
-  // Actions
+
+  // Main Todo Actions
   fetchTodos: () => Promise<void>;
-  addTodo: (title: string) => Promise<void>;
-  toggleTodo: (id: number) => Promise<void>;
-  deleteTodo: (id: number) => Promise<void>;
+  addTodo: (data: Partial<Todo>) => Promise<void>;
+  updateTodo: (id: string, data: Partial<Todo>) => Promise<void>;
+  toggleIsComplete: (id: string) => Promise<void>;
+  changePriority: (id: string, priority: "low" | "medium" | "high") => Promise<void>;
+  deleteTodo: (id: string) => Promise<void>;
+
+  // Sub-todo Actions
+  addSubTodo: (todoId: string, data: { title: string; description?: string }) => Promise<void>;
+  updateSubTodo: (todoId: string, subTodoId: string, data: Partial<SubTodo>) => Promise<void>;
+  toggleSubTodoIsComplete: (todoId: string, subTodoId: string) => Promise<void>;
+  deleteSubTodo: (todoId: string, subTodoId: string) => Promise<void>;
 }
 
-/**
- * Zustand store for Managing Todos with CRUD operations.
- * Demonstrates best practices for async state management and user feedback.
- */
 export const useTodoStore = create<TodoState>((set, get) => ({
   todos: [],
   isLoading: false,
@@ -32,9 +51,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   fetchTodos: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch("https://jsonplaceholder.typicode.com/todos?_limit=10");
-      if (!response.ok) throw new Error("Failed to fetch todos");
-      const data = await response.json();
+      const data = await apiFetch<Todo[]>("/todo");
       set({ todos: data, isLoading: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch todos";
@@ -43,67 +60,143 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
-  addTodo: async (title: string) => {
-    // In a real app, you'd send a POST request
-    const newTodo: Todo = {
-      id: Math.max(0, ...get().todos.map(t => t.id)) + 1,
-      title,
-      completed: false,
-      userId: 1,
-    };
-
-    // Optimistic update for better UX
-    set((state) => ({ todos: [newTodo, ...state.todos] }));
-    
+  addTodo: async (data) => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      toast.success("Task added successfully");
+      const newTodo = await apiFetch<Todo>("/todo", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      set((state) => ({ todos: [newTodo, ...state.todos] }));
+      toast.success("Todo added successfully");
     } catch (error) {
-      // Rollback on failure
-      set((state) => ({ todos: state.todos.filter(t => t.id !== newTodo.id) }));
-      toast.error("Failed to add task");
+      toast.error("Failed to add todo");
     }
   },
 
-  toggleTodo: async (id: number) => {
-    const todo = get().todos.find(t => t.id === id);
-    if (!todo) return;
-
-    // Optimistic update
-    set((state) => ({
-      todos: state.todos.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
-    }));
-
+  updateTodo: async (id, data) => {
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 300));
-      toast.info(`Task marked as ${!todo.completed ? 'completed' : 'incomplete'}`);
-    } catch (error) {
-      // Rollback
+      const updatedTodo = await apiFetch<Todo>(`/todo/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
       set((state) => ({
-        todos: state.todos.map(t => t.id === id ? { ...t, completed: todo.completed } : t)
+        todos: state.todos.map((t) => (t._id === id ? updatedTodo : t)),
       }));
-      toast.error("Failed to update status");
+      toast.success("Todo updated successfully");
+    } catch (error) {
+      toast.error("Failed to update todo");
     }
   },
 
-  deleteTodo: async (id: number) => {
-    const previousTodos = get().todos;
-    
+  toggleIsComplete: async (id) => {
     // Optimistic update
+    const previousTodos = get().todos;
     set((state) => ({
-      todos: state.todos.filter(t => t.id !== id)
+      todos: state.todos.map((t) =>
+        t._id === id ? { ...t, isCompleted: !t.isCompleted } : t
+      ),
     }));
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 300));
-      toast.success("Task deleted");
+      const updatedTodo = await apiFetch<Todo>(`/todo/${id}/toggle`, {
+        method: "PATCH",
+      });
+      set((state) => ({
+        todos: state.todos.map((t) => (t._id === id ? updatedTodo : t)),
+      }));
+      toast.success(`Task marked as ${updatedTodo.isCompleted ? "completed" : "incomplete"}`);
     } catch (error) {
-      // Rollback
       set({ todos: previousTodos });
-      toast.error("Failed to delete task");
+      toast.error("Failed to toggle status");
+    }
+  },
+
+  changePriority: async (id, priority) => {
+    try {
+      const updatedTodo = await apiFetch<Todo>(`/todo/${id}/priority`, {
+        method: "PATCH",
+        body: JSON.stringify({ priority }),
+      });
+      set((state) => ({
+        todos: state.todos.map((t) => (t._id === id ? updatedTodo : t)),
+      }));
+      toast.success(`Priority changed to ${priority}`);
+    } catch (error) {
+      toast.error("Failed to change priority");
+    }
+  },
+
+  deleteTodo: async (id) => {
+    const previousTodos = get().todos;
+    set((state) => ({
+      todos: state.todos.filter((t) => t._id !== id),
+    }));
+
+    try {
+      await apiFetch(`/todo/${id}`, { method: "DELETE" });
+      toast.success("Todo deleted successfully");
+    } catch (error) {
+      set({ todos: previousTodos });
+      toast.error("Failed to delete todo");
+    }
+  },
+
+  addSubTodo: async (todoId, data) => {
+    try {
+      const updatedTodo = await apiFetch<Todo>(`/todo/${todoId}/subtodos`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      set((state) => ({
+        todos: state.todos.map((t) => (t._id === todoId ? updatedTodo : t)),
+      }));
+      toast.success("Sub-todo added");
+    } catch (error) {
+      toast.error("Failed to add sub-todo");
+    }
+  },
+
+  updateSubTodo: async (todoId, subTodoId, data) => {
+    try {
+      const updatedTodo = await apiFetch<Todo>(`/todo/${todoId}/subtodos/${subTodoId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+      set((state) => ({
+        todos: state.todos.map((t) => (t._id === todoId ? updatedTodo : t)),
+      }));
+      toast.success("Sub-todo updated");
+    } catch (error) {
+      toast.error("Failed to update sub-todo");
+    }
+  },
+
+  toggleSubTodoIsComplete: async (todoId, subTodoId) => {
+    try {
+      const updatedTodo = await apiFetch<Todo>(`/todo/${todoId}/subtodos/${subTodoId}/toggle`, {
+        method: "PATCH",
+      });
+      set((state) => ({
+        todos: state.todos.map((t) => (t._id === todoId ? updatedTodo : t)),
+      }));
+      const sub = updatedTodo.subTodos.find(s => s._id === subTodoId);
+      toast.success(`Sub-task marked as ${sub?.isCompleted ? "completed" : "incomplete"}`);
+    } catch (error) {
+      toast.error("Failed to toggle sub-task status");
+    }
+  },
+
+  deleteSubTodo: async (todoId, subTodoId) => {
+    try {
+      const updatedTodo = await apiFetch<Todo>(`/todo/${todoId}/subtodos/${subTodoId}`, {
+        method: "DELETE",
+      });
+      set((state) => ({
+        todos: state.todos.map((t) => (t._id === todoId ? updatedTodo : t)),
+      }));
+      toast.success("Sub-todo deleted");
+    } catch (error) {
+      toast.error("Failed to delete sub-todo");
     }
   },
 }));

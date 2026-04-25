@@ -21,9 +21,9 @@ import { useState } from "react";
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/" },
   { title: "Ideas", icon: Lightbulb, href: "/ideas" },
-  { title: "Tasks", icon: CheckSquare, href: "/tasks" },
+  { title: "Todos", icon: CheckSquare, href: "/todos" },
   { title: "Updates", icon: Activity, href: "/updates" },
-  { title: "Streaks", icon: TrendingUp, href: "/streaks" },
+  // { title: "Streaks", icon: TrendingUp, href: "/streaks" },
 ];
 
 export function Sidebar() {
