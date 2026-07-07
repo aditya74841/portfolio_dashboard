@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useUpdateStore } from "@/store/use-update-store";
-import { LoginScreen } from "@/components/auth/login-screen";
 import { Sidebar } from "@/components/layout/sidebar";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import { Button } from "@/components/ui/button";
@@ -37,9 +36,7 @@ export default function UpdatesPage() {
     }
   }, [isAuthenticated, fetchUpdates, fetchActiveTemplate]);
 
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
+
 
   const handleCreate = async () => {
     await createUpdate({ title: newTitle, date: newDate });

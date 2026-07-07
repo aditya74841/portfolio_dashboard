@@ -12,7 +12,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  User
+  User,
+  Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,8 +23,9 @@ const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/" },
   { title: "Ideas", icon: Lightbulb, href: "/ideas" },
   { title: "Todos", icon: CheckSquare, href: "/todos" },
+  { title: "Streaks", icon: TrendingUp, href: "/streaks" },
   { title: "Updates", icon: Activity, href: "/updates" },
-  // { title: "Streaks", icon: TrendingUp, href: "/streaks" },
+  { title: "Settings", icon: Settings, href: "/settings" },
 ];
 
 export function Sidebar() {
@@ -105,7 +107,7 @@ export function Sidebar() {
           )}
         >
           <LogOut className="size-5" />
-          {!collapsed && <span className="font-medium">Lock Session</span>}
+          {!collapsed && <span className="font-medium">Logout</span>}
         </Button>
       </div>
     </div>

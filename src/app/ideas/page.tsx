@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useIdeaStore, Idea, IdeaStatus } from "@/store/use-idea-store";
+import { useAuthStore } from "@/store/use-auth-store";
 import { Sidebar } from "@/components/layout/sidebar";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import { IdeaCard } from "@/components/ideas/idea-card";
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 
 export default function IdeasPage() {
+  const { isAuthenticated } = useAuthStore();
   const { ideas, isLoading, fetchIdeas, createIdea } = useIdeaStore();
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -36,8 +38,12 @@ export default function IdeasPage() {
   const [newIdea, setNewIdea] = useState({ title: "", description: "", status: "idea" as IdeaStatus });
 
   useEffect(() => {
-    fetchIdeas();
-  }, [fetchIdeas]);
+    if (isAuthenticated) {
+      fetchIdeas();
+    }
+  }, [fetchIdeas, isAuthenticated]);
+
+
 
   const filteredIdeas = ideas.filter(idea => 
     idea.title.toLowerCase().includes(search.toLowerCase()) ||

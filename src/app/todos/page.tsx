@@ -3,8 +3,11 @@
 import { TodoApp } from "@/components/todo-app";
 import { Sidebar } from "@/components/layout/sidebar";
 import { PageWrapper } from "@/components/layout/page-wrapper";
+import { useAuthStore } from "@/store/use-auth-store";
 
 export default function TodosPage() {
+  const { isAuthenticated } = useAuthStore();
+
   return (
     <div className="flex h-screen bg-background overflow-hidden animate-in fade-in duration-500">
       <Sidebar />

@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useIdeaStore } from "@/store/use-idea-store";
-import { LoginScreen } from "@/components/auth/login-screen";
 import { Sidebar } from "@/components/layout/sidebar";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -29,10 +28,6 @@ export default function Home() {
       fetchIdeas();
     }
   }, [isAuthenticated, fetchIdeas]);
-
-  if (!isAuthenticated) {
-    return <LoginScreen />;
-  }
 
   const activeIdeas = ideas.filter(i => i.status !== "shipped" && i.status !== "paused");
   const buildingIdeas = ideas.filter(i => i.status === "building");

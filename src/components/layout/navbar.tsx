@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Github, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetHeader } from "@/components/ui/sheet";
+import { useAuthStore } from "@/store/use-auth-store";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/" },
@@ -20,6 +21,9 @@ const NAV_ITEMS = [
 export function Navbar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = React.useState(false);
+  const { isAuthenticated } = useAuthStore();
+
+  if (isAuthenticated) return null;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

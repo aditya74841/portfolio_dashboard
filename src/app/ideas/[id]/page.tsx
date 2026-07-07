@@ -2,6 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useIdeaStore, IdeaStatus } from "@/store/use-idea-store";
+import { useAuthStore } from "@/store/use-auth-store";
 import { Sidebar } from "@/components/layout/sidebar";
 import { PageWrapper } from "@/components/layout/page-wrapper";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ const statusVariants: Record<IdeaStatus, "default" | "secondary" | "success" | "
 const statuses: IdeaStatus[] = ["idea", "researching", "building", "shipped", "paused"];
 
 export default function IdeaDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { isAuthenticated } = useAuthStore();
   const { id } = use(params);
   const { currentIdea, isLoading, fetchIdeaById, changeStatus, addUpdate, deleteUpdate, updateIdea, editUpdate } = useIdeaStore();
   const [newUpdate, setNewUpdate] = useState("");
@@ -48,8 +50,12 @@ export default function IdeaDetailPage({ params }: { params: Promise<{ id: strin
   const [deleteUpdateId, setDeleteUpdateId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchIdeaById(id);
-  }, [id, fetchIdeaById]);
+    if (isAuthenticated) {
+      fetchIdeaById(id);
+    }
+  }, [id, fetchIdeaById, isAuthenticated]);
+
+
 
   useEffect(() => {
     if (currentIdea) {
