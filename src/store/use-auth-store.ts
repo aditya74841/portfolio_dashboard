@@ -247,11 +247,7 @@ export const useAuthStore = create<AuthState>()(
       checkPinSession: () => {
         const state = get();
         if (!state.pinExpiresAt) return false;
-        const isValid = Date.now() < state.pinExpiresAt;
-        if (!isValid && state.isPinVerified) {
-          set({ isPinVerified: false });
-        }
-        return isValid;
+        return Date.now() < state.pinExpiresAt;
       },
 
       // -----------------------------------------------------------------------

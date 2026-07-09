@@ -88,15 +88,19 @@ export function Sidebar() {
       {/* Footer / User Profile */}
       <div className="p-4 mt-auto border-t border-border/50">
         {!collapsed && (
-          <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="size-9 rounded-full bg-secondary flex items-center justify-center border">
-              <User className="size-5 text-muted-foreground" />
+          <Link href="/settings" className="flex items-center gap-3 mb-4 px-2 py-1.5 rounded-xl hover:bg-primary/5 transition-colors cursor-pointer group">
+            <div className="size-9 rounded-full bg-secondary flex items-center justify-center border overflow-hidden shrink-0 group-hover:border-primary/50 transition-colors">
+              {user?.avatar ? (
+                <img src={user.avatar} alt={user.name || "User"} className="size-full object-cover" />
+              ) : (
+                <User className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
+              )}
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="text-sm font-semibold truncate">{user?.name || "Chief"}</span>
+              <span className="text-sm font-semibold truncate group-hover:text-primary transition-colors">{user?.name || "Chief"}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest leading-none">Developer</span>
             </div>
-          </div>
+          </Link>
         )}
         <Button
           variant="ghost"

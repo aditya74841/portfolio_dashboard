@@ -24,25 +24,28 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   } = useAuthStore();
 
   const [loading, setLoading] = useState(true);
-  const [hasPin, setHasPin] = useState<boolean | null>(null);
   const [pinExpired, setPinExpired] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
 
   const isPublicPath = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   // Initial session check
   useEffect(() => {
     const init = async () => {
-      if (isAuthenticated && hasPin === null) {
+      if (isAuthenticated && !sessionChecked) {
         setLoading(true);
-        await checkSession();
+        // Make sure we have the latest user data if missing
+        if (!user) {
+          await checkSession();
+        }
 
-        // Check PIN session from server
+        // Check PIN session from server to restore active unlock state
         const pinStatus = await checkPinSessionFromServer();
-        setHasPin(pinStatus.hasPin);
 
         if (!pinStatus.isValid && pinStatus.hasPin) {
           setPinExpired(true);
         }
+        setSessionChecked(true);
         setLoading(false);
       } else if (!isAuthenticated) {
         setLoading(false);
@@ -50,7 +53,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     };
 
     init();
-  }, [isAuthenticated, hasPin, checkSession, checkPinSessionFromServer]);
+  }, [isAuthenticated, user, sessionChecked, checkSession, checkPinSessionFromServer]);
 
   // PIN expiry timer
   useEffect(() => {
@@ -71,14 +74,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, [pinExpiresAt, isPinVerified]);
 
-  // Listen for PIN verification changes
+  // Handle routing in a useEffect to prevent state updates during render
   useEffect(() => {
-    if (isPinVerified) {
-      setPinExpired(false);
-      // Update hasPin since user just verified or set a PIN
-      setHasPin(true);
+    if (loading) return;
+
+    if (isPublicPath) {
+      if (isAuthenticated && (pathname === "/login" || pathname === "/register")) {
+        router.replace("/");
+      }
+    } else if (!isAuthenticated) {
+      router.replace("/login");
     }
-  }, [isPinVerified]);
+  }, [loading, isPublicPath, isAuthenticated, pathname, router]);
 
   // Loading state
   if (loading) {
@@ -94,22 +101,19 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   // Public paths bypass auth
   if (isPublicPath) {
-    // If already authenticated, redirect to home
     if (isAuthenticated && (pathname === "/login" || pathname === "/register")) {
-      router.push("/");
       return null;
     }
     return <>{children}</>;
   }
 
-  // Not authenticated → redirect to login
+  // Not authenticated
   if (!isAuthenticated) {
-    router.push("/login");
     return null;
   }
 
   // Authenticated but no PIN set → show PIN setup
-  if (hasPin === false) {
+  if (user && user.hasPin === false) {
     return <PinSetupScreen />;
   }
 
