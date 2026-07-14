@@ -61,7 +61,7 @@ export function PinUnlockScreen({ expired = false }: PinUnlockScreenProps) {
         {/* User avatar + header */}
         <div className="flex flex-col items-center space-y-4 text-center">
           {user?.avatar ? (
-            <img src={user.avatar} alt={user.name} className="size-16 rounded-2xl object-cover shadow-lg" />
+            <img src={user.avatar} alt={user.name} referrerPolicy="no-referrer" className="size-16 rounded-2xl object-cover shadow-lg" />
           ) : (
             <div className="size-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-2 shadow-inner">
               {isLoading ? <Loader2 className="size-8 animate-spin" /> : <Lock className="size-8" />}

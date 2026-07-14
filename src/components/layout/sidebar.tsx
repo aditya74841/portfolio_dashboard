@@ -91,7 +91,7 @@ export function Sidebar() {
           <Link href="/settings" className="flex items-center gap-3 mb-4 px-2 py-1.5 rounded-xl hover:bg-primary/5 transition-colors cursor-pointer group">
             <div className="size-9 rounded-full bg-secondary flex items-center justify-center border overflow-hidden shrink-0 group-hover:border-primary/50 transition-colors">
               {user?.avatar ? (
-                <img src={user.avatar} alt={user.name || "User"} className="size-full object-cover" />
+                <img src={user.avatar} alt={user.name || "User"} referrerPolicy="no-referrer" className="size-full object-cover" />
               ) : (
                 <User className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
               )}

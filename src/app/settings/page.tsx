@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Camera, Lock, KeyRound, LogOut, Eye, EyeOff, User, Mail, Shield } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 export default function SettingsPage() {
   const { user, changeAvatar, removeAvatar, changePassword, setPin, logout, isLoading } = useAuthStore();
@@ -28,16 +29,46 @@ export default function SettingsPage() {
   // Name change
   const [newName, setNewName] = useState(user?.name || "");
   const [nameLoading, setNameLoading] = useState(false);
-  const { updateProfile } = useAuthStore();
+  const [showPinConfirm, setShowPinConfirm] = useState(false);
+  const [confirmPinInput, setConfirmPinInput] = useState("");
+  const { updateProfile, verifyPin } = useAuthStore();
 
-  const handleNameChange = async (e: React.FormEvent) => {
+  const handleNameChangeRequest = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName || newName === user?.name) return;
+    
+    // If user has no PIN set, just update directly
+    if (!user?.hasPin) {
+      handleActualNameChange();
+      return;
+    }
+    
+    // Ask for PIN first
+    setShowPinConfirm(true);
+  };
+
+  const handleActualNameChange = async () => {
     setNameLoading(true);
     try {
       await updateProfile(newName);
+      setShowPinConfirm(false);
+      setConfirmPinInput("");
     } catch { /* handled by store */ }
     setNameLoading(false);
+  };
+
+  const handlePinConfirmSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (confirmPinInput.length !== 4) return;
+    
+    setNameLoading(true);
+    try {
+      await verifyPin(confirmPinInput);
+      await handleActualNameChange();
+    } catch {
+      setConfirmPinInput("");
+      setNameLoading(false);
+    }
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,7 +130,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-6">
                   <div className="relative group">
                     {user?.avatar ? (
-                      <img src={user.avatar} alt={user.name} className="size-20 rounded-2xl object-cover border-2 border-border/50" />
+                      <img src={user.avatar} alt={user.name} referrerPolicy="no-referrer" className="size-20 rounded-2xl object-cover border-2 border-border/50" />
                     ) : (
                       <div className="size-20 rounded-2xl bg-primary/10 flex items-center justify-center text-primary text-2xl font-bold">
                         {user?.name?.charAt(0)?.toUpperCase() || "?"}
@@ -127,7 +158,7 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="flex-1 space-y-3 ml-4">
-                    <form onSubmit={handleNameChange} className="flex gap-2">
+                    <form onSubmit={handleNameChangeRequest} className="flex gap-2">
                       <div className="flex-1">
                         <Input 
                           value={newName}
@@ -211,6 +242,44 @@ export default function SettingsPage() {
           </div>
         </PageWrapper>
       </main>
+
+      {/* PIN Confirmation Dialog */}
+      <Dialog open={showPinConfirm} onOpenChange={(open) => !nameLoading && setShowPinConfirm(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="size-5 text-primary" /> Verify Identity
+            </DialogTitle>
+            <DialogDescription>
+              Please enter your 4-digit PIN to authorize changing your name to "{newName}".
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handlePinConfirmSubmit} className="space-y-4 pt-4">
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <Input
+                type="password"
+                maxLength={4}
+                pattern="\d{4}"
+                autoFocus
+                value={confirmPinInput}
+                onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, ""))}
+                placeholder="••••"
+                className="h-14 bg-background/50 w-48 text-center text-3xl tracking-[0.5em]"
+                disabled={nameLoading}
+              />
+            </div>
+            <DialogFooter className="sm:justify-between pt-4">
+              <Button type="button" variant="ghost" onClick={() => setShowPinConfirm(false)} disabled={nameLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={confirmPinInput.length !== 4 || nameLoading}>
+                {nameLoading ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+                Verify & Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
