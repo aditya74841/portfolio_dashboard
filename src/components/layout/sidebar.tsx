@@ -13,7 +13,9 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
-  Settings
+  Settings,
+  Menu,
+  FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ const navItems = [
   { title: "Todos", icon: CheckSquare, href: "/todos" },
   { title: "Streaks", icon: TrendingUp, href: "/streaks" },
   { title: "Updates", icon: Activity, href: "/updates" },
+  { title: "Notes", icon: FileText, href: "/notes" },
   { title: "Settings", icon: Settings, href: "/settings" },
 ];
 
@@ -32,12 +35,33 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className={cn(
-      "relative h-screen border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col transition-all duration-300",
-      collapsed ? "w-20" : "w-64"
-    )}>
+    <>
+      {/* Mobile Toggle Button */}
+      <Button 
+        variant="outline" 
+        size="icon" 
+        className="md:hidden fixed top-4 left-4 z-50 rounded-xl shadow-md bg-background/80 backdrop-blur-md border-border/50"
+        onClick={() => setMobileOpen(!mobileOpen)}
+      >
+        <Menu className="size-5" />
+      </Button>
+
+      {/* Mobile Overlay */}
+      {mobileOpen && (
+        <div 
+          className="md:hidden fixed inset-0 z-40 bg-background/80 backdrop-blur-sm" 
+          onClick={() => setMobileOpen(false)} 
+        />
+      )}
+
+      <div className={cn(
+        "fixed md:relative inset-y-0 left-0 z-50 h-screen border-r border-border/50 bg-background md:bg-card/30 flex flex-col transition-all duration-300",
+        collapsed ? "md:w-20" : "md:w-64",
+        mobileOpen ? "translate-x-0 w-64" : "-translate-x-full md:translate-x-0"
+      )}>
       {/* Collapse Toggle */}
       <Button
         variant="ghost"
@@ -114,6 +138,7 @@ export function Sidebar() {
           {!collapsed && <span className="font-medium">Logout</span>}
         </Button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
