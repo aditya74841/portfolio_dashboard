@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 export interface Note {
   _id: string;
+  title: string;
   content: string;
   userId: string;
   createdAt: string;
@@ -14,10 +15,10 @@ interface NoteState {
   notes: Note[];
   activeNote: Note | null;
   isLoading: boolean;
-  
+
   fetchNotes: () => Promise<void>;
-  createNote: (content: string) => Promise<Note | null>;
-  updateNote: (id: string, content: string) => Promise<void>;
+  createNote: (title: string, content: string) => Promise<Note | null>;
+  updateNote: (id: string, title: string, content: string) => Promise<void>;
   deleteNote: (id: string) => Promise<void>;
   setActiveNote: (note: Note | null) => void;
 }
@@ -38,17 +39,17 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     }
   },
 
-  createNote: async (content: string) => {
+  createNote: async (title: string, content: string) => {
     set({ isLoading: true });
     try {
       const newNote = await apiFetch<Note>("/notes", {
         method: "POST",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ title, content }),
       });
-      set((state) => ({ 
+      set((state) => ({
         notes: [newNote, ...state.notes],
         activeNote: newNote,
-        isLoading: false
+        isLoading: false,
       }));
       toast.success("Note saved!");
       return newNote;
@@ -59,17 +60,16 @@ export const useNoteStore = create<NoteState>((set, get) => ({
     }
   },
 
-  updateNote: async (id: string, content: string) => {
+  updateNote: async (id: string, title: string, content: string) => {
     try {
       const updated = await apiFetch<Note>(`/notes/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ title, content }),
       });
       set((state) => ({
         notes: state.notes.map((n) => (n._id === id ? updated : n)),
-        activeNote: state.activeNote?._id === id ? updated : state.activeNote
+        activeNote: state.activeNote?._id === id ? updated : state.activeNote,
       }));
-      toast.success("Note updated!");
     } catch (error) {
       toast.error("Failed to update note.");
     }
@@ -80,13 +80,13 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       await apiFetch(`/notes/${id}`, { method: "DELETE" });
       set((state) => ({
         notes: state.notes.filter((n) => n._id !== id),
-        activeNote: state.activeNote?._id === id ? null : state.activeNote
+        activeNote: state.activeNote?._id === id ? null : state.activeNote,
       }));
       toast.success("Note deleted.");
     } catch (error) {
       toast.error("Failed to delete note.");
     }
   },
-  
+
   setActiveNote: (note) => set({ activeNote: note }),
 }));

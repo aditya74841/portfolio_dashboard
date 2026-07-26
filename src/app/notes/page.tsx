@@ -1,64 +1,152 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useNoteStore, Note } from "@/store/use-note-store";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Loader2, ChevronLeft, Check } from "lucide-react";
+import { Plus, Trash2, Loader2, ChevronLeft, Save, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { cn } from "@/lib/utils";
 
+// Dynamically import Quill to avoid SSR issues (Quill needs window)
+const QuillEditor = dynamic(
+  () => import("@/components/notes/QuillEditor").then((m) => m.QuillEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="size-5 animate-spin text-muted-foreground/40" />
+      </div>
+    ),
+  }
+);
+
+// Strips HTML tags to produce plain text for previews
+function stripHtml(html: string): string {
+  if (!html) return "";
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function getDisplayTitle(note: Note): string {
+  if (note.title?.trim()) return note.title.trim();
+  const plain = stripHtml(note.content);
+  if (!plain) return "Untitled";
+  return plain.length > 50 ? plain.substring(0, 50) + "…" : plain;
+}
+
+function getPreview(note: Note): string {
+  const plain = stripHtml(note.content);
+  if (!plain) return "";
+  return plain.length > 70 ? plain.substring(0, 70) + "…" : plain;
+}
+
+// Check if content is empty (Quill empty = "<p><br></p>")
+function isContentEmpty(html: string): boolean {
+  const stripped = stripHtml(html);
+  return !stripped;
+}
+
+const AUTO_SAVE_DELAY = 5000; // 5 seconds
+
 export default function NotesPage() {
-  const { notes, activeNote, isLoading, fetchNotes, createNote, updateNote, deleteNote, setActiveNote } = useNoteStore();
+  const {
+    notes,
+    activeNote,
+    isLoading,
+    fetchNotes,
+    createNote,
+    updateNote,
+    deleteNote,
+    setActiveNote,
+  } = useNoteStore();
+
+  const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchNotes();
   }, [fetchNotes]);
 
-  // Sync content with active note
+  // Sync state when active note changes
   useEffect(() => {
     if (activeNote) {
-      setContent(activeNote.content);
+      setTitle(activeNote.title || "");
+      setContent(activeNote.content || "");
     } else {
+      setTitle("");
       setContent("");
     }
     setHasUnsavedChanges(false);
+    setLastSaved(null);
   }, [activeNote]);
 
-  // Auto-focus textarea when editor opens
+  // Auto-focus title on open
   useEffect(() => {
-    if (showEditor && textareaRef.current) {
-      setTimeout(() => textareaRef.current?.focus(), 150);
+    if (showEditor && titleRef.current) {
+      setTimeout(() => titleRef.current?.focus(), 150);
     }
   }, [showEditor, activeNote]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, []);
+
+  // ── Save function ──
+  const handleSave = useCallback(
+    async (currentTitle: string, currentContent: string, silent = false) => {
+      if (!currentTitle.trim() && isContentEmpty(currentContent)) return;
+
+      setIsSaving(true);
+      try {
+        if (activeNote) {
+          await updateNote(activeNote._id, currentTitle, currentContent);
+        } else {
+          const newNote = await createNote(currentTitle, currentContent);
+          if (newNote) setActiveNote(newNote);
+        }
+        setHasUnsavedChanges(false);
+        setLastSaved(new Date());
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [activeNote, updateNote, createNote, setActiveNote]
+  );
+
+  // ── Schedule auto-save ──
+  const scheduleAutoSave = useCallback(
+    (newTitle: string, newContent: string) => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = setTimeout(() => {
+        handleSave(newTitle, newContent, true);
+      }, AUTO_SAVE_DELAY);
+    },
+    [handleSave]
+  );
+
+  const handleTitleChange = (value: string) => {
+    setTitle(value);
+    setHasUnsavedChanges(true);
+    scheduleAutoSave(value, content);
+  };
 
   const handleContentChange = (value: string) => {
     setContent(value);
     setHasUnsavedChanges(true);
-  };
-
-  const handleSave = async () => {
-    if (!content.trim()) return;
-
-    setIsSaving(true);
-    try {
-      if (activeNote) {
-        await updateNote(activeNote._id, content);
-      } else {
-        const newNote = await createNote(content);
-        if (newNote) setActiveNote(newNote);
-      }
-      setHasUnsavedChanges(false);
-    } finally {
-      setIsSaving(false);
-    }
+    scheduleAutoSave(title, value);
   };
 
   const handleDelete = async () => {
@@ -69,36 +157,73 @@ export default function NotesPage() {
   };
 
   const handleNewNote = () => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     setActiveNote(null);
+    setTitle("");
     setContent("");
     setShowEditor(true);
     setHasUnsavedChanges(false);
+    setLastSaved(null);
   };
 
   const handleSelectNote = (note: Note) => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     setActiveNote(note);
     setShowEditor(true);
   };
 
   const handleBack = () => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    // Save any pending changes before going back
+    if (hasUnsavedChanges) handleSave(title, content, true);
     setShowEditor(false);
   };
 
-  const getTitle = (text: string) => {
-    if (!text) return "Untitled";
-    const firstLine = text.split("\n")[0].trim();
-    return firstLine.length > 50 ? firstLine.substring(0, 50) + "…" : firstLine || "Untitled";
-  };
+  // ── Status label ──
+  const statusLabel = isSaving
+    ? "Saving…"
+    : hasUnsavedChanges
+    ? "Unsaved"
+    : lastSaved
+    ? `Saved ${format(lastSaved, "h:mm a")}`
+    : activeNote
+    ? format(new Date(activeNote.updatedAt), "MMM d, yyyy · h:mm a")
+    : "New note";
 
-  const getPreview = (text: string) => {
-    if (!text) return "";
-    const lines = text.split("\n").filter((l) => l.trim());
-    const secondLine = lines.length > 1 ? lines[1].trim() : "";
-    return secondLine.length > 60 ? secondLine.substring(0, 60) + "…" : secondLine;
-  };
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── SHARED EDITOR CONTENT (used by both mobile + desktop) ──
+  // ─────────────────────────────────────────────────────────────────────────
+  const EditorContent = (
+    <div className="max-w-4xl mx-auto px-6 md:px-16 py-10">
+      {/* Blog title input */}
+      <input
+        ref={titleRef}
+        value={title}
+        onChange={(e) => handleTitleChange(e.target.value)}
+        placeholder="Post title…"
+        className={cn(
+          "w-full bg-transparent outline-none border-none",
+          "text-[1.75rem] md:text-[2.25rem] font-bold text-foreground tracking-tight",
+          "placeholder:text-muted-foreground/20",
+          "mb-2 leading-tight"
+        )}
+      />
 
-  // ─── Mobile: Full-screen list / editor toggle ───
-  // ─── Desktop: Side-by-side split pane ───
+      {/* Shortcut hints */}
+      <p className="text-[11px] text-muted-foreground/35 mb-6 select-none">
+        <span className="font-mono">Ctrl+B</span> Bold &middot;{" "}
+        <span className="font-mono">Ctrl+I</span> Italic &middot;{" "}
+        <span className="font-mono">Ctrl+U</span> Underline
+      </p>
+
+      {/* Quill rich text editor */}
+      <QuillEditor
+        value={content}
+        onChange={handleContentChange}
+        placeholder="Write something…"
+      />
+    </div>
+  );
 
   return (
     <div className="flex h-[100dvh] bg-background overflow-hidden">
@@ -107,12 +232,10 @@ export default function NotesPage() {
       {/* ═══ MOBILE LAYOUT ═══ */}
       <div className="flex-1 flex flex-col md:hidden h-[100dvh] overflow-hidden">
 
-        {/* Mobile: Note List View */}
+        {/* Mobile: Note List */}
         {!showEditor && (
           <div className="flex-1 flex flex-col h-full">
-            {/* Top bar — leaves room for the sidebar hamburger (fixed top-4 left-4) */}
             <div className="h-14 shrink-0 flex items-center justify-between px-4 border-b border-border/30">
-              {/* Left spacer for hamburger button */}
               <div className="w-10" />
               <span className="text-sm font-medium text-foreground">Notes</span>
               <button
@@ -124,7 +247,6 @@ export default function NotesPage() {
               </button>
             </div>
 
-            {/* Note list */}
             <div className="flex-1 overflow-y-auto overscroll-contain">
               {isLoading && (notes?.length || 0) === 0 ? (
                 <div className="flex justify-center py-20">
@@ -133,7 +255,7 @@ export default function NotesPage() {
               ) : (notes?.length || 0) === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full px-8">
                   <div className="size-12 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
-                    <Plus className="size-5 text-muted-foreground/40" />
+                    <FileText className="size-5 text-muted-foreground/40" />
                   </div>
                   <p className="text-sm text-muted-foreground text-center">No notes yet</p>
                   <p className="text-xs text-muted-foreground/50 mt-1 text-center">
@@ -154,15 +276,15 @@ export default function NotesPage() {
                         )}
                       >
                         <p className="text-[15px] font-medium truncate leading-snug text-foreground">
-                          {getTitle(note.content)}
+                          {getDisplayTitle(note)}
                         </p>
                         <div className="flex items-center gap-2 mt-1.5">
                           <span className="text-xs text-muted-foreground/60 shrink-0">
                             {format(new Date(note.updatedAt), "MMM d")}
                           </span>
-                          {getPreview(note.content) && (
+                          {getPreview(note) && (
                             <span className="text-xs text-muted-foreground/40 truncate">
-                              {getPreview(note.content)}
+                              {getPreview(note)}
                             </span>
                           )}
                         </div>
@@ -175,10 +297,10 @@ export default function NotesPage() {
           </div>
         )}
 
-        {/* Mobile: Editor View (full screen takeover) */}
+        {/* Mobile: Editor */}
         {showEditor && (
           <div className="flex-1 flex flex-col h-full">
-            {/* Editor top bar — back + date only */}
+            {/* Top bar */}
             <div className="h-12 shrink-0 flex items-center justify-between px-2 border-b border-border/20">
               <button
                 onClick={handleBack}
@@ -189,28 +311,13 @@ export default function NotesPage() {
               </button>
 
               <span className="text-[11px] text-muted-foreground/50 pr-2">
-                {activeNote
-                  ? format(new Date(activeNote.updatedAt), "MMM d, h:mm a")
-                  : "New note"}
-                {hasUnsavedChanges && " · Edited"}
+                {statusLabel}
               </span>
             </div>
 
-            {/* Textarea */}
+            {/* Quill editor */}
             <div className="flex-1 overflow-y-auto overscroll-contain pb-16">
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => handleContentChange(e.target.value)}
-                placeholder="Start writing…"
-                className={cn(
-                  "w-full h-full min-h-[50vh] resize-none bg-transparent text-foreground",
-                  "text-base leading-relaxed px-5 py-4",
-                  "placeholder:text-muted-foreground/25",
-                  "outline-none border-none focus:ring-0",
-                  "selection:bg-primary/10"
-                )}
-              />
+              {EditorContent}
             </div>
 
             {/* Bottom action bar */}
@@ -228,16 +335,16 @@ export default function NotesPage() {
                 <div />
               )}
               <Button
-                onClick={handleSave}
-                disabled={isSaving || !content.trim() || !hasUnsavedChanges}
+                onClick={() => handleSave(title, content)}
+                disabled={isSaving || (!title.trim() && isContentEmpty(content))}
                 className="h-10 rounded-xl px-5 gap-2 text-sm font-medium"
               >
                 {isSaving ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Check className="size-4" />
+                  <Save className="size-4" />
                 )}
-                Save
+                Save Now
               </Button>
             </div>
           </div>
@@ -247,9 +354,8 @@ export default function NotesPage() {
       {/* ═══ DESKTOP LAYOUT ═══ */}
       <div className="hidden md:flex flex-1 h-screen overflow-hidden">
 
-        {/* ─── Note List Pane ─── */}
-        <aside className="w-80 lg:w-96 flex flex-col border-r border-border/40 bg-background shrink-0">
-          {/* List Header */}
+        {/* ── Note List Pane ── */}
+        <aside className="w-72 lg:w-80 flex flex-col border-r border-border/40 bg-background shrink-0">
           <div className="px-5 py-5 flex items-center justify-between shrink-0">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
               Notes
@@ -266,7 +372,6 @@ export default function NotesPage() {
             </button>
           </div>
 
-          {/* Note List */}
           <div className="flex-1 overflow-y-auto px-3 pb-6">
             {isLoading && (notes?.length || 0) === 0 ? (
               <div className="flex justify-center py-16">
@@ -275,7 +380,7 @@ export default function NotesPage() {
             ) : (notes?.length || 0) === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 px-6">
                 <div className="size-10 rounded-xl bg-muted/60 flex items-center justify-center mb-3">
-                  <Plus className="size-4 text-muted-foreground/60" />
+                  <FileText className="size-4 text-muted-foreground/60" />
                 </div>
                 <p className="text-sm text-muted-foreground text-center">No notes yet</p>
                 <p className="text-xs text-muted-foreground/60 mt-1 text-center">
@@ -292,24 +397,24 @@ export default function NotesPage() {
                       onClick={() => handleSelectNote(note)}
                       className={cn(
                         "w-full text-left px-3 py-3 rounded-lg transition-colors group",
-                        isActive
-                          ? "bg-muted/80"
-                          : "hover:bg-muted/40"
+                        isActive ? "bg-muted/80" : "hover:bg-muted/40"
                       )}
                     >
-                      <p className={cn(
-                        "text-sm font-medium truncate leading-snug",
-                        isActive ? "text-foreground" : "text-foreground/80"
-                      )}>
-                        {getTitle(note.content)}
+                      <p
+                        className={cn(
+                          "text-sm font-medium truncate leading-snug",
+                          isActive ? "text-foreground" : "text-foreground/80"
+                        )}
+                      >
+                        {getDisplayTitle(note)}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-[11px] text-muted-foreground/70 shrink-0">
                           {format(new Date(note.updatedAt), "MMM d")}
                         </span>
-                        {getPreview(note.content) && (
+                        {getPreview(note) && (
                           <span className="text-[11px] text-muted-foreground/50 truncate">
-                            {getPreview(note.content)}
+                            {getPreview(note)}
                           </span>
                         )}
                       </div>
@@ -321,20 +426,25 @@ export default function NotesPage() {
           </div>
         </aside>
 
-        {/* ─── Editor Pane ─── */}
+        {/* ── Editor Pane ── */}
         {showEditor || activeNote ? (
           <main className="flex-1 flex flex-col bg-background min-w-0">
-            {/* Editor Header */}
+            {/* Editor header */}
             <div className="px-6 h-14 flex items-center justify-between shrink-0 border-b border-border/30">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs text-muted-foreground/70 truncate">
-                  {activeNote
-                    ? format(new Date(activeNote.updatedAt), "MMM d, yyyy · h:mm a")
-                    : "New note"}
+                <span
+                  className={cn(
+                    "text-xs truncate transition-colors",
+                    isSaving
+                      ? "text-muted-foreground/70"
+                      : hasUnsavedChanges
+                      ? "text-amber-500/80"
+                      : "text-muted-foreground/50"
+                  )}
+                >
+                  {statusLabel}
                 </span>
-                {hasUnsavedChanges && (
-                  <span className="size-1.5 rounded-full bg-muted-foreground/40 shrink-0" title="Unsaved changes" />
-                )}
+                {isSaving && <Loader2 className="size-3 animate-spin text-muted-foreground/50 shrink-0" />}
               </div>
 
               <div className="flex items-center gap-1">
@@ -348,44 +458,32 @@ export default function NotesPage() {
                   </button>
                 )}
                 <Button
-                  onClick={handleSave}
-                  disabled={isSaving || !content.trim() || !hasUnsavedChanges}
+                  onClick={() => handleSave(title, content)}
+                  disabled={isSaving || (!title.trim() && isContentEmpty(content))}
                   size="sm"
                   className="h-8 rounded-lg px-3 gap-1.5 text-xs font-medium"
                 >
                   {isSaving ? (
                     <Loader2 className="size-3 animate-spin" />
                   ) : (
-                    <Check className="size-3" />
+                    <Save className="size-3" />
                   )}
-                  Save
+                  Save Now
                 </Button>
               </div>
             </div>
 
-            {/* Editor Body */}
+            {/* Editor body */}
             <div className="flex-1 overflow-y-auto">
-              <div className="max-w-2xl mx-auto px-10 py-12">
-                <textarea
-                  ref={textareaRef}
-                  value={content}
-                  onChange={(e) => handleContentChange(e.target.value)}
-                  placeholder="Start writing…"
-                  className={cn(
-                    "w-full min-h-[60vh] resize-none bg-transparent text-foreground",
-                    "text-[15px] leading-relaxed",
-                    "placeholder:text-muted-foreground/30",
-                    "outline-none border-none focus:ring-0",
-                    "selection:bg-primary/10"
-                  )}
-                />
-              </div>
+              {EditorContent}
             </div>
           </main>
         ) : (
-          /* Empty state when no note selected */
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-sm text-muted-foreground/40">Select a note or create a new one</p>
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <div className="size-12 rounded-2xl bg-muted/50 flex items-center justify-center">
+              <FileText className="size-5 text-muted-foreground/40" />
+            </div>
+            <p className="text-sm text-muted-foreground/50">Select a note or create a new one</p>
           </div>
         )}
       </div>

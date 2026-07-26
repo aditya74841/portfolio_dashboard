@@ -9,6 +9,7 @@ vi.mock('@/lib/api', () => ({
 describe('useNoteStore', () => {
   const mockNote: Note = {
     _id: '1',
+    title: 'First line of my note',
     content: 'First line of my note\nSecond line here',
     userId: 'user-1',
     createdAt: new Date().toISOString(),
@@ -17,6 +18,7 @@ describe('useNoteStore', () => {
 
   const mockNote2: Note = {
     _id: '2',
+    title: '',
     content: 'Another note',
     userId: 'user-1',
     createdAt: new Date().toISOString(),
@@ -75,11 +77,11 @@ describe('useNoteStore', () => {
   it('creates a note successfully', async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce(mockNote);
 
-    const result = await useNoteStore.getState().createNote('First line of my note\nSecond line here');
+    const result = await useNoteStore.getState().createNote('First line of my note', 'First line of my note\nSecond line here');
 
     expect(apiFetch).toHaveBeenCalledWith('/notes', {
       method: 'POST',
-      body: JSON.stringify({ content: 'First line of my note\nSecond line here' }),
+      body: JSON.stringify({ title: 'First line of my note', content: 'First line of my note\nSecond line here' }),
     });
     expect(result).toEqual(mockNote);
     expect(useNoteStore.getState().notes).toHaveLength(1);
@@ -91,7 +93,7 @@ describe('useNoteStore', () => {
     useNoteStore.setState({ notes: [mockNote2] });
     vi.mocked(apiFetch).mockResolvedValueOnce(mockNote);
 
-    await useNoteStore.getState().createNote('New note');
+    await useNoteStore.getState().createNote('New note', '');
 
     const notes = useNoteStore.getState().notes;
     expect(notes).toHaveLength(2);
@@ -102,7 +104,7 @@ describe('useNoteStore', () => {
   it('returns null on create error', async () => {
     vi.mocked(apiFetch).mockRejectedValueOnce(new Error('Server error'));
 
-    const result = await useNoteStore.getState().createNote('Will fail');
+    const result = await useNoteStore.getState().createNote('Will fail', '');
 
     expect(result).toBeNull();
     expect(useNoteStore.getState().notes).toHaveLength(0);
@@ -115,11 +117,11 @@ describe('useNoteStore', () => {
     useNoteStore.setState({ notes: [mockNote], activeNote: mockNote });
     vi.mocked(apiFetch).mockResolvedValueOnce(updatedNote);
 
-    await useNoteStore.getState().updateNote('1', 'Updated content');
+    await useNoteStore.getState().updateNote('1', mockNote.title, 'Updated content');
 
     expect(apiFetch).toHaveBeenCalledWith('/notes/1', {
       method: 'PATCH',
-      body: JSON.stringify({ content: 'Updated content' }),
+      body: JSON.stringify({ title: mockNote.title, content: 'Updated content' }),
     });
     expect(useNoteStore.getState().notes[0].content).toBe('Updated content');
     expect(useNoteStore.getState().activeNote?.content).toBe('Updated content');
@@ -130,7 +132,7 @@ describe('useNoteStore', () => {
     useNoteStore.setState({ notes: [mockNote, mockNote2], activeNote: mockNote });
     vi.mocked(apiFetch).mockResolvedValueOnce(updatedNote2);
 
-    await useNoteStore.getState().updateNote('2', 'Updated note 2');
+    await useNoteStore.getState().updateNote('2', mockNote2.title, 'Updated note 2');
 
     expect(useNoteStore.getState().activeNote?._id).toBe('1');
     expect(useNoteStore.getState().activeNote?.content).toBe(mockNote.content);
@@ -140,7 +142,7 @@ describe('useNoteStore', () => {
     useNoteStore.setState({ notes: [mockNote] });
     vi.mocked(apiFetch).mockRejectedValueOnce(new Error('Update failed'));
 
-    await useNoteStore.getState().updateNote('1', 'Will fail');
+    await useNoteStore.getState().updateNote('1', '', 'Will fail');
 
     // Note should remain unchanged
     expect(useNoteStore.getState().notes[0].content).toBe(mockNote.content);

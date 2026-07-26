@@ -21,6 +21,7 @@ vi.mock('@/components/ui/confirm-delete-dialog', () => ({
 describe('NotesPage', () => {
   const mockNote: Note = {
     _id: '1',
+    title: 'My first note',
     content: 'My first note\nWith a second line',
     userId: 'user-1',
     createdAt: '2026-07-10T10:00:00.000Z',
@@ -29,6 +30,7 @@ describe('NotesPage', () => {
 
   const mockNote2: Note = {
     _id: '2',
+    title: 'Second note',
     content: 'Second note',
     userId: 'user-1',
     createdAt: '2026-07-11T10:00:00.000Z',
@@ -105,8 +107,8 @@ describe('NotesPage', () => {
     const newButtons = screen.getAllByLabelText('New note');
     await user.click(newButtons[0]);
 
-    // Editor should now be visible with placeholder text
-    expect(screen.getAllByPlaceholderText('Start writing…').length).toBeGreaterThan(0);
+    // Editor should now be visible with the title placeholder
+    expect(screen.getAllByPlaceholderText('Post title…').length).toBeGreaterThan(0);
   });
 
   it('clicking + button clears activeNote', async () => {

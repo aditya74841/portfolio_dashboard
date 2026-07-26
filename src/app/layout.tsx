@@ -37,7 +37,12 @@ export const metadata: Metadata = {
     description: "A premium, production-ready Next.js starter.",
   },
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/logo.png", sizes: "32x32", type: "image/png" },
+      { url: "/logo.png", sizes: "16x16", type: "image/png" },
+    ],
+    shortcut: "/logo.png",
+    apple: "/logo.png",
   },
 };
 
@@ -49,6 +54,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="icon" href="/logo.png" type="image/png" />
+        <link rel="shortcut icon" href="/logo.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/logo.png" />
         {/* Google Identity Services for Google Sign-In */}
         <Script src="https://accounts.google.com/gsi/client" strategy="beforeInteractive" />
       </head>

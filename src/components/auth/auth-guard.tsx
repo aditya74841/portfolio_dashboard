@@ -55,24 +55,53 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     init();
   }, [isAuthenticated, user, sessionChecked, checkSession, checkPinSessionFromServer]);
 
-  // PIN expiry timer
+  // 10-minute rolling inactivity PIN lock timer
   useEffect(() => {
-    if (!pinExpiresAt || !isPinVerified) return;
+    if (!isAuthenticated || !isPinVerified) return;
 
-    const timeLeft = pinExpiresAt - Date.now();
-    if (timeLeft <= 0) {
-      setPinExpired(true);
-      useAuthStore.setState({ isPinVerified: false });
-      return;
-    }
+    const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+    let timerId: NodeJS.Timeout;
+    let lastReset = Date.now();
 
-    const timer = setTimeout(() => {
-      setPinExpired(true);
-      useAuthStore.setState({ isPinVerified: false });
-    }, timeLeft);
+    const resetTimer = () => {
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(() => {
+        setPinExpired(true);
+        useAuthStore.setState({ isPinVerified: false, pinExpiresAt: null });
+      }, INACTIVITY_TIMEOUT_MS);
+    };
 
-    return () => clearTimeout(timer);
-  }, [pinExpiresAt, isPinVerified]);
+    resetTimer();
+
+    const events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "pointerdown"];
+
+    const handleActivity = () => {
+      const now = Date.now();
+      if (now - lastReset > 1000) {
+        lastReset = now;
+        resetTimer();
+      }
+    };
+
+    events.forEach((evt) => window.addEventListener(evt, handleActivity, { passive: true }));
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        const now = Date.now();
+        if (now - lastReset >= INACTIVITY_TIMEOUT_MS) {
+          setPinExpired(true);
+          useAuthStore.setState({ isPinVerified: false, pinExpiresAt: null });
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+      events.forEach((evt) => window.removeEventListener(evt, handleActivity));
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isAuthenticated, isPinVerified]);
 
   // Handle routing in a useEffect to prevent state updates during render
   useEffect(() => {

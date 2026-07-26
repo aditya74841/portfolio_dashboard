@@ -10,7 +10,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((state) => state.user);
 
   React.useEffect(() => {
-    const defaultIcon = "/favicon.ico";
+    const defaultIcon = "/logo.png";
     const iconUrl = user?.avatar || defaultIcon;
 
     // Safely update existing link tags rather than removing them, 
