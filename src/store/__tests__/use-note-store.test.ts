@@ -37,7 +37,7 @@ describe('useNoteStore', () => {
 
     await useNoteStore.getState().fetchNotes();
 
-    expect(apiFetch).toHaveBeenCalledWith('/notes');
+    expect(apiFetch).toHaveBeenCalledWith('/notes?limit=1000');
     expect(useNoteStore.getState().notes).toEqual([mockNote, mockNote2]);
     expect(useNoteStore.getState().isLoading).toBe(false);
   });

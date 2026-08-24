@@ -4,6 +4,32 @@ import { toast } from "sonner";
 
 export type IdeaStatus = "idea" | "researching" | "building" | "shipped" | "paused";
 
+export type AgentStatus = "pending" | "running" | "complete" | "failed";
+
+export interface AgentResult {
+  status: AgentStatus;
+  score: number;
+  summary: string;
+  insights: string[];
+  risks: string[];
+  opportunities: string[];
+  durationMs?: number;
+  error?: string;
+}
+
+export interface AIAnalysis {
+  status: "pending" | "running" | "complete" | "partial" | "failed";
+  agents: {
+    market: AgentResult;
+    technical: AgentResult;
+    competitor: AgentResult;
+    legal: AgentResult;
+  };
+  aggregatedScore: number;
+  model: string;
+  analyzedAt: string;
+}
+
 export interface IdeaUpdate {
   _id: string;
   description: string;
@@ -17,6 +43,7 @@ export interface Idea {
   description: string;
   status: IdeaStatus;
   updates: IdeaUpdate[];
+  aiAnalysis?: AIAnalysis | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -34,6 +61,10 @@ interface IdeaState {
   deleteIdea: (id: string) => Promise<void>;
   changeStatus: (id: string, status: IdeaStatus) => Promise<void>;
   
+  // AI Analysis Actions
+  fetchIdeaAnalysis: (id: string) => Promise<AIAnalysis | null>;
+  reAnalyzeIdea: (id: string) => Promise<void>;
+
   // Update Actions
   addUpdate: (ideaId: string, description: string, links?: string[]) => Promise<void>;
   editUpdate: (ideaId: string, updateId: string, description: string, links?: string[]) => Promise<void>;
@@ -125,7 +156,46 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
     }
   },
 
+  fetchIdeaAnalysis: async (id) => {
+    try {
+      const data = await apiFetch<{ aiAnalysis: AIAnalysis }>(`/idea/${id}/analysis`);
+      // Patch the analysis into the matching idea in state
+      set((state) => ({
+        ideas: state.ideas.map((i) =>
+          i._id === id ? { ...i, aiAnalysis: data.aiAnalysis } : i
+        ),
+        currentIdea:
+          state.currentIdea?._id === id
+            ? { ...state.currentIdea, aiAnalysis: data.aiAnalysis }
+            : state.currentIdea,
+      }));
+      return data.aiAnalysis;
+    } catch (error) {
+      return null;
+    }
+  },
+
+  reAnalyzeIdea: async (id) => {
+    try {
+      await apiFetch(`/idea/${id}/re-analyze`, { method: "POST" });
+      // Reset analysis state locally so UI shows "running"
+      set((state) => ({
+        ideas: state.ideas.map((i) =>
+          i._id === id ? { ...i, aiAnalysis: { ...i.aiAnalysis, status: "pending" } as AIAnalysis } : i
+        ),
+        currentIdea:
+          state.currentIdea?._id === id
+            ? { ...state.currentIdea, aiAnalysis: { ...state.currentIdea.aiAnalysis, status: "pending" } as AIAnalysis }
+            : state.currentIdea,
+      }));
+      toast.info("Re-analysis started. Results will appear shortly.");
+    } catch (error) {
+      toast.error("Failed to trigger re-analysis.");
+    }
+  },
+
   addUpdate: async (ideaId, description, links = []) => {
+
     try {
       const updatedIdea = await apiFetch<Idea>(`/idea/${ideaId}/updates`, {
         method: "POST",

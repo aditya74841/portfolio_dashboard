@@ -15,18 +15,22 @@ import {
   User,
   Settings,
   Menu,
-  FileText
+  FileText,
+  FolderGit2,
+  BookOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/" },
+  // { title: "Projects", icon: FolderGit2, href: "/projects" },
   { title: "Ideas", icon: Lightbulb, href: "/ideas" },
-  { title: "Todos", icon: CheckSquare, href: "/todos" },
-  { title: "Streaks", icon: TrendingUp, href: "/streaks" },
-  { title: "Updates", icon: Activity, href: "/updates" },
+  { title: "Blogs", icon: BookOpen, href: "/blogs" },
+  // { title: "Todos", icon: CheckSquare, href: "/todos" },
+  // { title: "Streaks", icon: TrendingUp, href: "/streaks" },
+  // { title: "Updates", icon: Activity, href: "/updates" },
   { title: "Notes", icon: FileText, href: "/notes" },
   { title: "Settings", icon: Settings, href: "/settings" },
 ];
@@ -36,6 +40,19 @@ export function Sidebar() {
   const { user, logout } = useAuthStore();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    const savedState = localStorage.getItem("sidebar_collapsed");
+    if (savedState !== null) {
+      setCollapsed(savedState === "true");
+    }
+  }, []);
+
+  const toggleCollapsed = () => {
+    const nextState = !collapsed;
+    setCollapsed(nextState);
+    localStorage.setItem("sidebar_collapsed", String(nextState));
+  };
 
   return (
     <>
@@ -66,7 +83,7 @@ export function Sidebar() {
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={toggleCollapsed}
         className="absolute -right-4 top-10 size-8 rounded-full border bg-background shadow-sm z-10 hover:bg-primary/10"
       >
         {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}

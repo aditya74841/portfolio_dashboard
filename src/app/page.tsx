@@ -14,7 +14,8 @@ import {
   TrendingUp,
   ArrowRight,
   Clock,
-  ExternalLink
+  ExternalLink,
+  FolderGit2
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -55,11 +56,11 @@ export default function Home() {
                 href="/ideas"
               />
               <StatCard 
-                title="Pending Tasks" 
-                value="7" 
-                icon={<CheckSquare className="size-5" />} 
-                description="Todo module coming soon"
-                href="/tasks"
+                title="Projects" 
+                value="Diary" 
+                icon={<FolderGit2 className="size-5" />} 
+                description="Software dev timeline"
+                href="/projects"
               />
               <StatCard 
                 title="Updates Logged" 
@@ -124,8 +125,9 @@ export default function Home() {
                     <CardDescription>Quick actions for daily use.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    <ActionButton title="Project Diary" icon={<FolderGit2 className="size-4" />} href="/projects" />
                     <ActionButton title="New Idea" icon={<Lightbulb className="size-4" />} href="/ideas" />
-                    <ActionButton title="Add Task" icon={<CheckSquare className="size-4" />} href="/tasks" />
+                    <ActionButton title="Add Task" icon={<CheckSquare className="size-4" />} href="/todos" />
                     <ActionButton title="Log Update" icon={<Activity className="size-4" />} href="/updates" />
                     
                     <div className="mt-8 p-4 rounded-2xl bg-primary/10 border border-primary/20">

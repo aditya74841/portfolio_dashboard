@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import ReactQuill from "react-quill-new";
+import ReactQuill, { Quill } from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 
 interface QuillEditorProps {
@@ -10,9 +10,19 @@ interface QuillEditorProps {
   placeholder?: string;
 }
 
-// Minimal toolbar — Bold/Italic/Underline removed (use Ctrl+B / Ctrl+I / Ctrl+U)
+const FONT_SIZES = ["10px", "12px", "14px", "16px", "18px", "20px", "24px", "32px"];
+
+if (typeof window !== "undefined" && Quill) {
+  const Size = Quill.import("attributors/style/size") as any;
+  if (Size) {
+    Size.whitelist = FONT_SIZES;
+    Quill.register(Size, true);
+  }
+}
+
 const TOOLBAR_OPTIONS = [
   [{ header: [1, 2, 3, false] }],
+  [{ size: ["10px", "12px", false, "16px", "18px", "20px", "24px", "32px"] }],
   [{ list: "ordered" }, { list: "bullet" }],
   [{ align: [] }],
   ["blockquote", "code-block"],
@@ -23,6 +33,43 @@ const TOOLBAR_OPTIONS = [
 
 export function QuillEditor({ value, onChange, placeholder }: QuillEditorProps) {
   const quillRef = useRef<ReactQuill>(null);
+
+  const changeFontSize = (direction: "increase" | "decrease") => {
+    const quill = quillRef.current?.getEditor();
+    if (!quill) return;
+
+    const range = quill.getSelection();
+    const format = quill.getFormat(range || undefined);
+    const currentSize = (format.size as string) || "14px";
+
+    let currentIndex = FONT_SIZES.indexOf(currentSize);
+    if (currentIndex === -1) currentIndex = 2; // Default 14px is index 2
+
+    let nextIndex = direction === "increase" ? currentIndex + 1 : currentIndex - 1;
+    nextIndex = Math.max(0, Math.min(FONT_SIZES.length - 1, nextIndex));
+
+    const targetSize = FONT_SIZES[nextIndex];
+    if (targetSize === "14px") {
+      quill.format("size", false);
+    } else {
+      quill.format("size", targetSize);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      // Increase size shortcuts: Ctrl + ']' or Ctrl + '.' or Ctrl + '>' or Ctrl + '=' or Ctrl + '+'
+      if (e.key === "]" || e.key === "." || e.key === ">" || e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        changeFontSize("increase");
+      }
+      // Decrease size shortcuts: Ctrl + '[' or Ctrl + ',' or Ctrl + '<' or Ctrl + '-'
+      else if (e.key === "[" || e.key === "," || e.key === "<" || e.key === "-") {
+        e.preventDefault();
+        changeFontSize("decrease");
+      }
+    }
+  };
 
   return (
     <>
@@ -290,9 +337,47 @@ export function QuillEditor({ value, onChange, placeholder }: QuillEditorProps) 
           content: "Remove";
           margin-left: 8px;
         }
+
+        /* ─── Font size picker labels (numerical values) ─── */
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-label::before,
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-item::before {
+          content: '14px' !important;
+        }
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="10px"]::before,
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="10px"]::before {
+          content: '10px' !important;
+        }
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="12px"]::before,
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12px"]::before {
+          content: '12px' !important;
+        }
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="14px"]::before,
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="14px"]::before {
+          content: '14px' !important;
+        }
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="16px"]::before,
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="16px"]::before {
+          content: '16px' !important;
+        }
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="18px"]::before,
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="18px"]::before {
+          content: '18px' !important;
+        }
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="20px"]::before,
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="20px"]::before {
+          content: '20px' !important;
+        }
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="24px"]::before,
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="24px"]::before {
+          content: '24px' !important;
+        }
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="32px"]::before,
+        .qe .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="32px"]::before {
+          content: '32px' !important;
+        }
       `}</style>
 
-      <div className="qe">
+      <div className="qe" onKeyDown={handleKeyDown}>
         <ReactQuill
           ref={quillRef}
           theme="snow"
@@ -302,6 +387,7 @@ export function QuillEditor({ value, onChange, placeholder }: QuillEditorProps) 
           modules={{ toolbar: TOOLBAR_OPTIONS }}
           formats={[
             "header",
+            "size",
             "bold", "italic", "underline", "strike",
             "color", "background",
             "align",
