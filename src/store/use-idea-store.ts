@@ -37,11 +37,67 @@ export interface IdeaUpdate {
   createdAt: string;
 }
 
+export interface IdeaQuestion {
+  _id?: string;
+  category: "problem" | "target_audience" | "competition" | "technical" | "business";
+  question: string;
+  answer?: string | null;
+  answeredAt?: string | null;
+}
+
+export interface IdeaReport {
+  executiveSummary?: string;
+  problemStatement?: string;
+  viabilityScore?: number;
+  targetAudience?: {
+    description?: string;
+    segments?: string[];
+    painPoints?: string[];
+  };
+  competitors?: Array<{
+    name: string;
+    website?: string;
+    strengths?: string[];
+    weaknesses?: string[];
+    differentiator?: string;
+  }>;
+  marketOpportunity?: {
+    estimatedSize?: string;
+    growthRate?: string;
+    keyTrends?: string[];
+    insights?: string[];
+  };
+  technicalComplexity?: {
+    level?: "Low" | "Medium" | "High" | "Very High";
+    estimatedBuildTime?: string;
+    recommendedStack?: string[];
+    coreChallenges?: string[];
+    whatYoullLearn?: string[];
+  };
+  monetization?: Array<{
+    model: string;
+    description?: string;
+    estimatedRevenue?: string;
+  }>;
+  risks?: Array<{
+    risk: string;
+    severity?: "Low" | "Medium" | "High";
+    mitigation?: string;
+  }>;
+  legalConsiderations?: string[];
+  nextSteps?: string[];
+  generatedAt?: string;
+  model?: string;
+}
+
 export interface Idea {
   _id: string;
   title: string;
   description: string;
   status: IdeaStatus;
+  aiStatus?: "idle" | "generating_questions" | "questions_ready" | "generating_report" | "report_ready" | "failed_questions" | "failed_report";
+  questions?: IdeaQuestion[];
+  report?: IdeaReport | null;
   updates: IdeaUpdate[];
   aiAnalysis?: AIAnalysis | null;
   createdAt: string;
@@ -64,6 +120,7 @@ interface IdeaState {
   // AI Analysis Actions
   fetchIdeaAnalysis: (id: string) => Promise<AIAnalysis | null>;
   reAnalyzeIdea: (id: string) => Promise<void>;
+  submitAnswers: (ideaId: string, answers: Array<{ category: string; answer: string; questionId?: string }>) => Promise<void>;
 
   // Update Actions
   addUpdate: (ideaId: string, description: string, links?: string[]) => Promise<void>;
@@ -191,6 +248,22 @@ export const useIdeaStore = create<IdeaState>((set, get) => ({
       toast.info("Re-analysis started. Results will appear shortly.");
     } catch (error) {
       toast.error("Failed to trigger re-analysis.");
+    }
+  },
+
+  submitAnswers: async (ideaId, answers) => {
+    try {
+      const updatedIdea = await apiFetch<Idea>(`/idea/${ideaId}/answers`, {
+        method: "POST",
+        body: JSON.stringify({ answers }),
+      });
+      set((state) => ({
+        ideas: state.ideas.map((i) => (i._id === ideaId ? updatedIdea : i)),
+        currentIdea: state.currentIdea?._id === ideaId ? updatedIdea : state.currentIdea,
+      }));
+      toast.success("Answers submitted! Multi-agent validation swarm started.");
+    } catch (error) {
+      toast.error("Failed to submit answers.");
     }
   },
 

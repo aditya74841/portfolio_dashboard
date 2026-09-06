@@ -59,10 +59,30 @@ export function IdeaCard({ idea, onClick }: IdeaCardProps) {
       className="group cursor-pointer border-border/50 bg-card/50 hover:border-primary/30 hover:shadow-md transition-all animate-in fade-in zoom-in duration-300"
     >
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <Badge variant={statusVariants[idea.status]} className="capitalize">
-            {idea.status}
-          </Badge>
+        <div className="flex items-start justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Badge variant={statusVariants[idea.status]} className="capitalize">
+              {idea.status}
+            </Badge>
+
+            {/* AI Agent Incubator Status Pill */}
+            {idea.aiStatus === "questions_ready" && (
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/30 text-[10px] animate-pulse">
+                ⚡ 5 Questions Ready
+              </Badge>
+            )}
+            {idea.aiStatus === "generating_report" && (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[10px] animate-pulse">
+                🐝 Swarm Running...
+              </Badge>
+            )}
+            {idea.aiStatus === "report_ready" && idea.report?.viabilityScore && (
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-[10px] font-bold">
+                🏆 Score: {idea.report.viabilityScore}/100
+              </Badge>
+            )}
+          </div>
+
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button 
               variant="ghost" 

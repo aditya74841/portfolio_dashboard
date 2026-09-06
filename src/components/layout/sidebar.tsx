@@ -17,7 +17,8 @@ import {
   Menu,
   FileText,
   FolderGit2,
-  BookOpen
+  BookOpen,
+  BookMarked
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { useState, useEffect } from "react";
 
 const navItems = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/" },
+  { title: "Daily Diary", icon: BookMarked, href: "/diary" },
   // { title: "Projects", icon: FolderGit2, href: "/projects" },
   { title: "Ideas", icon: Lightbulb, href: "/ideas" },
   { title: "Blogs", icon: BookOpen, href: "/blogs" },

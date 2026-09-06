@@ -221,6 +221,195 @@ export default function IdeaDetailPage({ params }: { params: Promise<{ id: strin
                 <div className="bg-primary/5 rounded-3xl border border-primary/10 p-8 italic text-primary/80">
                    "Ideas are cheap. Execution is everything. Use the timeline on the right to track every small win."
                 </div>
+
+                {/* 🤖 AI Multi-Agent Incubator Section */}
+                <div className="space-y-6">
+                  {/* State 1: Generating Questions */}
+                  {currentIdea.aiStatus === "generating_questions" && (
+                    <div className="bg-card/40 rounded-3xl border border-primary/20 p-8 text-center space-y-3">
+                      <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto animate-pulse">
+                        <Loader2 className="size-6 animate-spin" />
+                      </div>
+                      <h3 className="text-lg font-bold">Phase 1: Questioner Agent Active</h3>
+                      <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                        Our Questioner Agent is analyzing your idea to formulate 5 targeted questions across technical, market, and business lenses.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* State 2: Questions Ready — User Answers Form */}
+                  {currentIdea.aiStatus === "questions_ready" && currentIdea.questions && currentIdea.questions.length > 0 && (
+                    <div className="bg-card/70 rounded-3xl border border-primary/30 p-6 md:p-8 space-y-6 shadow-xl">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 mb-2">
+                            Phase 1: Clarification Needed
+                          </Badge>
+                          <h3 className="text-xl font-bold text-foreground">Answer 5 Questions to Launch Agent Swarm</h3>
+                          <p className="text-xs text-muted-foreground">
+                            Help our specialized sub-agents understand your intent before they execute market, technical, and risk analysis.
+                          </p>
+                        </div>
+                      </div>
+
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          const formData = new FormData(e.currentTarget);
+                          const answersList = currentIdea.questions?.map((q, idx) => ({
+                            questionId: q._id,
+                            category: q.category,
+                            answer: (formData.get(`q_${idx}`) as string) || "",
+                          }));
+                          if (answersList) {
+                            const { submitAnswers } = useIdeaStore.getState();
+                            await submitAnswers(currentIdea._id, answersList);
+                          }
+                        }}
+                        className="space-y-4"
+                      >
+                        {currentIdea.questions.map((q, idx) => (
+                          <div key={q._id || idx} className="space-y-1.5 bg-background/50 p-4 rounded-2xl border border-border/40">
+                            <label className="text-xs font-semibold text-foreground flex items-center gap-2">
+                              <span className="size-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center">
+                                {idx + 1}
+                              </span>
+                              <span className="uppercase text-[10px] tracking-wider text-muted-foreground font-mono font-bold">
+                                [{q.category}]
+                              </span>
+                              <span>{q.question}</span>
+                            </label>
+                            <Input
+                              name={`q_${idx}`}
+                              defaultValue={q.answer || ""}
+                              placeholder="Your thoughts..."
+                              className="rounded-xl bg-background text-sm border-border/50 focus-visible:ring-primary/20"
+                              required
+                            />
+                          </div>
+                        ))}
+
+                        <Button type="submit" className="w-full rounded-2xl h-11 gap-2 shadow-lg font-bold">
+                          <Activity className="size-4 animate-pulse" />
+                          Launch 4-Agent Validation Swarm
+                        </Button>
+                      </form>
+                    </div>
+                  )}
+
+                  {/* State 3: Generating Report */}
+                  {currentIdea.aiStatus === "generating_report" && (
+                    <div className="bg-card/40 rounded-3xl border border-primary/30 p-8 text-center space-y-4 shadow-xl">
+                      <div className="size-14 rounded-2xl bg-primary/15 text-primary flex items-center justify-center mx-auto">
+                        <Loader2 className="size-7 animate-spin" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold">Phase 2: 4-Agent Swarm Running...</h3>
+                        <p className="text-xs text-muted-foreground max-w-md mx-auto mt-1">
+                          Market Analyst, CTO Agent, Risk Analyst, and Growth Officer are working concurrently via OpenRouter Free Tier models to evaluate your idea.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap justify-center gap-2 pt-2 text-[11px] font-mono text-muted-foreground">
+                        <span className="px-2.5 py-1 rounded-full bg-muted/60 border border-border/40">🔎 Competitor Analysis</span>
+                        <span className="px-2.5 py-1 rounded-full bg-muted/60 border border-border/40">💻 Tech Stack Selection</span>
+                        <span className="px-2.5 py-1 rounded-full bg-muted/60 border border-border/40">⚠️ Risk Assessment</span>
+                        <span className="px-2.5 py-1 rounded-full bg-muted/60 border border-border/40">💰 Monetization Model</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* State 4: Report Ready — Multi-Agent Viability Blueprint */}
+                  {currentIdea.aiStatus === "report_ready" && currentIdea.report && (
+                    <div className="bg-card/60 rounded-3xl border border-border/50 p-6 md:p-8 space-y-6 shadow-xl">
+                      {/* Header & Viability Score */}
+                      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/40 pb-6">
+                        <div>
+                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 mb-2">
+                            Multi-Agent Swarm Complete
+                          </Badge>
+                          <h3 className="text-2xl font-extrabold tracking-tight text-foreground">
+                            Startup Viability Blueprint
+                          </h3>
+                        </div>
+
+                        <div className="flex items-center gap-3 bg-background/80 px-4 py-2.5 rounded-2xl border border-border/50 shadow-xs">
+                          <div className="text-right">
+                            <div className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Viability Score</div>
+                            <div className="text-xs font-semibold text-emerald-500">
+                              {currentIdea.report.viabilityScore && currentIdea.report.viabilityScore >= 75 ? "High Feasibility" : "Moderate Feasibility"}
+                            </div>
+                          </div>
+                          <div className="text-3xl font-black text-primary font-mono">
+                            {currentIdea.report.viabilityScore || 80}/100
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Executive Summary */}
+                      {currentIdea.report.executiveSummary && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Executive Summary</h4>
+                          <p className="text-sm leading-relaxed text-foreground/90 bg-muted/30 p-4 rounded-2xl border border-border/30">
+                            {currentIdea.report.executiveSummary}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Technical Blueprint */}
+                      {currentIdea.report.technicalComplexity && (
+                        <div className="space-y-3 bg-muted/20 p-5 rounded-2xl border border-border/40">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-bold flex items-center gap-2">
+                              <Terminal className="size-4 text-primary" />
+                              Technical Architecture (CTO Agent)
+                            </h4>
+                            <Badge variant="outline" className="text-xs">
+                              Complexity: {currentIdea.report.technicalComplexity.level}
+                            </Badge>
+                          </div>
+
+                          {currentIdea.report.technicalComplexity.recommendedStack && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {currentIdea.report.technicalComplexity.recommendedStack.map((tech, i) => (
+                                <span key={i} className="px-2.5 py-1 rounded-xl bg-primary/10 text-primary text-xs font-semibold">
+                                  {tech}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {currentIdea.report.technicalComplexity.estimatedBuildTime && (
+                            <p className="text-xs text-muted-foreground pt-1">
+                              Estimated MVP Build Time: <strong className="text-foreground">{currentIdea.report.technicalComplexity.estimatedBuildTime}</strong>
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Risks & Mitigation */}
+                      {currentIdea.report.risks && currentIdea.report.risks.length > 0 && (
+                        <div className="space-y-3">
+                          <h4 className="text-xs uppercase tracking-wider font-bold text-muted-foreground">
+                            Critical Risks & Mitigations (Devil's Advocate Agent)
+                          </h4>
+                          <div className="grid grid-cols-1 gap-2">
+                            {currentIdea.report.risks.map((r, i) => (
+                              <div key={i} className="p-3.5 rounded-2xl bg-destructive/5 border border-destructive/20 text-xs space-y-1">
+                                <div className="flex items-center justify-between font-bold text-foreground">
+                                  <span>⚠️ {r.risk}</span>
+                                  <Badge variant="destructive" className="text-[10px] px-2 py-0">
+                                    {r.severity} Risk
+                                  </Badge>
+                                </div>
+                                {r.mitigation && <p className="text-muted-foreground font-medium pt-0.5">Mitigation: {r.mitigation}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Right Column: Timeline / Updates */}
