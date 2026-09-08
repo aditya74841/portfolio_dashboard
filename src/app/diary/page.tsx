@@ -26,7 +26,10 @@ import {
   Copy,
   Lightbulb,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Cloud,
+  CloudUpload,
+  CloudOff,
 } from "lucide-react";
 import { format, parseISO, isValid } from "date-fns";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
@@ -64,8 +67,7 @@ const WRITING_PROMPTS = [
   "Describe a moment today when you felt focused and in the flow.",
   "What is something you can do tomorrow to take better care of yourself?",
 ];
-
-const AUTO_SAVE_DELAY = 3000;
+const AUTO_SAVE_DELAY = 500;
 
 function formatDisplayDate(dateStr: string): string {
   try {
@@ -91,10 +93,15 @@ export default function DiaryPage() {
     selectedDate,
     isLoading,
     isSaving,
+    isSyncing,
+    syncState,
+    pendingCount,
     fetchTodayEntry,
     fetchEntryByDate,
     fetchEntries,
+    saveLocalEntry,
     saveEntry,
+    syncCloud,
     deleteEntry,
   } = useDiaryStore();
 
@@ -107,6 +114,7 @@ export default function DiaryPage() {
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [currentPromptIndex, setCurrentPromptIndex] = useState(0);
+  const [isLocalSaving, setIsLocalSaving] = useState(false);
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevDateRef = useRef<string | null>(null);
@@ -121,6 +129,13 @@ export default function DiaryPage() {
   // Sync editor state when selected activeEntry or date changes
   useEffect(() => {
     if (selectedDate !== prevDateRef.current) {
+      // Abort any pending auto-save countdown from the prior date
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      prevDateRef.current = selectedDate;
+
       if (activeEntry && activeEntry.date === selectedDate) {
         setContent(activeEntry.content || "");
         setMood(activeEntry.mood || "Neutral");
@@ -130,10 +145,12 @@ export default function DiaryPage() {
       }
       setHasUnsavedChanges(false);
       setLastSaved(null);
-      prevDateRef.current = selectedDate;
-    } else if (activeEntry && activeEntry.date === selectedDate && !hasUnsavedChanges) {
-      setContent(activeEntry.content || "");
-      setMood(activeEntry.mood || "Neutral");
+    } else if (activeEntry && activeEntry.date === selectedDate) {
+      // If server/indexeddb arrives with entry and user hasn't typed their own unsaved changes yet
+      if (!hasUnsavedChanges) {
+        setContent(activeEntry.content || "");
+        setMood(activeEntry.mood || "Neutral");
+      }
     }
   }, [activeEntry, selectedDate, hasUnsavedChanges]);
 
@@ -159,22 +176,46 @@ export default function DiaryPage() {
     return list;
   }, [entries, searchQuery]);
 
-  // Save handler
+  // Local Save handler (IndexedDB)
   const handleSave = useCallback(
-    async (currentContent: string, currentMood: string) => {
+    async (currentContent: string, currentMood: string, silent = false) => {
+      // Clear any pending debounce auto-save so it doesn't collide
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+
       if (isSavingRef.current) return;
 
       isSavingRef.current = true;
+      setIsLocalSaving(true);
       try {
-        await saveEntry(selectedDate, currentContent, currentMood);
+        await saveLocalEntry(selectedDate, currentContent, currentMood);
         setHasUnsavedChanges(false);
         setLastSaved(new Date());
+        if (!silent) {
+          toast.success("Saved to local database (IndexedDB)!");
+        }
+      } catch (err) {
+        console.error("Failed to save entry locally:", err);
+        if (!silent) {
+          toast.error("Failed to save to local database.");
+        }
       } finally {
         isSavingRef.current = false;
+        setIsLocalSaving(false);
       }
     },
-    [selectedDate, saveEntry]
+    [selectedDate, saveLocalEntry]
   );
+
+  // Manual Cloud Sync handler (MongoDB)
+  const handleCloudSync = async () => {
+    if (hasUnsavedChanges) {
+      await handleSave(content, mood, true);
+    }
+    await syncCloud();
+  };
 
   const handleSaveRef = useRef(handleSave);
   useEffect(() => {
@@ -184,7 +225,7 @@ export default function DiaryPage() {
   const scheduleAutoSave = useCallback((newContent: string, newMood: string) => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
-      handleSaveRef.current(newContent, newMood);
+      handleSaveRef.current(newContent, newMood, true);
     }, AUTO_SAVE_DELAY);
   }, []);
 
@@ -201,7 +242,10 @@ export default function DiaryPage() {
   };
 
   const handleSelectDate = async (dateStr: string) => {
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
     if (hasUnsavedChanges) await handleSave(content, mood);
     fetchEntryByDate(dateStr);
   };
@@ -401,38 +445,6 @@ export default function DiaryPage() {
                 >
                   Today
                 </Button>
-
-                {/* Status Indicator */}
-                <div
-                  className={cn(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ml-1",
-                    isSaving
-                      ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
-                      : hasUnsavedChanges
-                      ? "bg-amber-500/10 text-amber-500 border-amber-500/30"
-                      : "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
-                  )}
-                >
-                  {isSaving ? (
-                    <Loader2 className="size-3 animate-spin" />
-                  ) : (
-                    <span
-                      className={cn(
-                        "size-1.5 rounded-full",
-                        hasUnsavedChanges ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
-                      )}
-                    />
-                  )}
-                  <span className="truncate hidden sm:inline">
-                    {isSaving
-                      ? "Saving…"
-                      : hasUnsavedChanges
-                      ? "Unsaved"
-                      : lastSaved
-                      ? `Saved at ${format(lastSaved, "h:mm a")}`
-                      : "Saved"}
-                  </span>
-                </div>
               </div>
 
               {/* Action Buttons & Tools */}
@@ -476,16 +488,6 @@ export default function DiaryPage() {
                     <Trash2 className="size-3.5" />
                   </button>
                 )}
-
-                <Button
-                  onClick={() => handleSave(content, mood)}
-                  disabled={isSaving}
-                  size="sm"
-                  className="h-8 rounded-xl px-3.5 gap-1.5 text-xs font-semibold shadow-sm"
-                >
-                  {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                  <span>Save</span>
-                </Button>
               </div>
             </div>
 
@@ -521,14 +523,82 @@ export default function DiaryPage() {
               </div>
             </div>
 
-            {/* Sub-header Reading Stats */}
-            <div className="px-6 pb-2 text-[11px] text-muted-foreground/60 font-mono flex items-center gap-2 shrink-0">
-              <span>{wordCount} words</span>
-              <span>&middot;</span>
-              <span className="flex items-center gap-1">
-                <Clock className="size-3" />
-                {readTimeMinutes} min read
-              </span>
+            {/* Sub-header Reading Stats & Light Persistence Controls */}
+            <div className="px-6 pb-2 text-[11px] text-muted-foreground/60 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2 font-mono">
+                <span>{wordCount} words</span>
+                <span>&middot;</span>
+                <span className="flex items-center gap-1">
+                  <Clock className="size-3" />
+                  {readTimeMinutes} min read
+                </span>
+              </div>
+
+              {/* Light, non-distracting Save & Sync Status Controls */}
+              <div className="flex items-center gap-2 font-mono text-[11px]">
+                {/* Local Save (IndexedDB) */}
+                <button
+                  onClick={() => handleSave(content, mood)}
+                  disabled={isLocalSaving || isSaving}
+                  className="inline-flex items-center gap-1 text-muted-foreground/80 hover:text-foreground transition-colors py-0.5 px-1.5 rounded hover:bg-muted/40 cursor-pointer disabled:opacity-60"
+                  title={hasUnsavedChanges ? "Unsaved changes. Click to save to local database" : "All notes saved to local IndexedDB"}
+                >
+                  {isLocalSaving || isSaving ? (
+                    <Loader2 className="size-3 animate-spin text-amber-500" />
+                  ) : hasUnsavedChanges ? (
+                    <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  ) : (
+                    <Check className="size-3 text-emerald-500" />
+                  )}
+                  <span>
+                    {isLocalSaving || isSaving
+                      ? "Saving…"
+                      : hasUnsavedChanges
+                      ? "Unsaved"
+                      : "Saved locally"}
+                  </span>
+                </button>
+
+                <span className="text-border/40">&bull;</span>
+
+                {/* Cloud Sync (MongoDB) */}
+                <button
+                  onClick={handleCloudSync}
+                  disabled={isSyncing}
+                  className={cn(
+                    "inline-flex items-center gap-1 transition-colors py-0.5 px-1.5 rounded hover:bg-muted/40 cursor-pointer disabled:opacity-60",
+                    pendingCount > 0
+                      ? "text-amber-500/90 hover:text-amber-500 font-medium"
+                      : "text-muted-foreground/80 hover:text-foreground"
+                  )}
+                  title={
+                    pendingCount > 0
+                      ? `${pendingCount} note(s) pending cloud backup. Click to sync.`
+                      : syncState === "offline"
+                      ? "Currently offline"
+                      : "Synced with MongoDB Cloud"
+                  }
+                >
+                  {isSyncing ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : pendingCount > 0 ? (
+                    <CloudUpload className="size-3 text-amber-500" />
+                  ) : syncState === "offline" ? (
+                    <CloudOff className="size-3" />
+                  ) : (
+                    <Cloud className="size-3 text-muted-foreground/60" />
+                  )}
+                  <span>
+                    {isSyncing
+                      ? "Syncing…"
+                      : pendingCount > 0
+                      ? `Sync (${pendingCount})`
+                      : syncState === "offline"
+                      ? "Offline"
+                      : "Cloud synced"}
+                  </span>
+                </button>
+              </div>
             </div>
 
             {/* Quill Canvas Scroll Container */}

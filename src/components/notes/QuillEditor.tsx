@@ -382,7 +382,12 @@ export function QuillEditor({ value, onChange, placeholder }: QuillEditorProps) 
           ref={quillRef}
           theme="snow"
           value={value}
-          onChange={onChange}
+          onChange={(content, delta, source) => {
+            // Only propagate user-initiated typing and editing events (ignore programmatic reset)
+            if (source === "user") {
+              onChange(content);
+            }
+          }}
           placeholder={placeholder || "Write something…"}
           modules={{ toolbar: TOOLBAR_OPTIONS }}
           formats={[
