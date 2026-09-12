@@ -30,10 +30,14 @@ import {
   Cloud,
   CloudUpload,
   CloudOff,
+  Mic,
+  X,
 } from "lucide-react";
 import { format, parseISO, isValid } from "date-fns";
 import { ConfirmDeleteDialog } from "@/components/ui/confirm-delete-dialog";
 import { cn } from "@/lib/utils";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
+import { AudioVisualizer } from "@/components/diary/audio-visualizer";
 import { toast } from "sonner";
 
 // Dynamically import Quill to avoid SSR issues
@@ -118,6 +122,7 @@ export default function DiaryPage() {
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevDateRef = useRef<string | null>(null);
+  const loadedDateRef = useRef<string | null>(null);
   const isSavingRef = useRef(false);
 
   // Initial load
@@ -126,7 +131,7 @@ export default function DiaryPage() {
     fetchEntries();
   }, [fetchTodayEntry, fetchEntries]);
 
-  // Sync editor state when selected activeEntry or date changes
+  // Sync editor state when selectedDate changes or initial entry arrives for selectedDate
   useEffect(() => {
     if (selectedDate !== prevDateRef.current) {
       // Abort any pending auto-save countdown from the prior date
@@ -139,20 +144,26 @@ export default function DiaryPage() {
       if (activeEntry && activeEntry.date === selectedDate) {
         setContent(activeEntry.content || "");
         setMood(activeEntry.mood || "Neutral");
+        loadedDateRef.current = selectedDate;
       } else {
         setContent("");
         setMood("Neutral");
+        loadedDateRef.current = null;
       }
       setHasUnsavedChanges(false);
       setLastSaved(null);
-    } else if (activeEntry && activeEntry.date === selectedDate) {
-      // If server/indexeddb arrives with entry and user hasn't typed their own unsaved changes yet
-      if (!hasUnsavedChanges) {
-        setContent(activeEntry.content || "");
-        setMood(activeEntry.mood || "Neutral");
-      }
+    } else if (
+      loadedDateRef.current !== selectedDate &&
+      activeEntry &&
+      activeEntry.date === selectedDate
+    ) {
+      // Initial async load of entry for this selectedDate from IndexedDB/cloud
+      setContent(activeEntry.content || "");
+      setMood(activeEntry.mood || "Neutral");
+      loadedDateRef.current = selectedDate;
+      setHasUnsavedChanges(false);
     }
-  }, [activeEntry, selectedDate, hasUnsavedChanges]);
+  }, [activeEntry, selectedDate]);
 
   // Cleanup auto-save timer on unmount
   useEffect(() => {
@@ -234,6 +245,75 @@ export default function DiaryPage() {
     setHasUnsavedChanges(true);
     scheduleAutoSave(value, mood);
   };
+
+  const handleWhisperTranscription = useCallback(
+    (text: string) => {
+      if (!text || !text.trim()) return;
+
+      setContent((prevContent) => {
+        let updatedContent = "";
+        const trimmed = text.trim();
+        const capitalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+
+        if (!prevContent || prevContent === "<p><br></p>" || prevContent === "<p></p>") {
+          updatedContent = `<p>${capitalized}</p>`;
+        } else {
+          updatedContent = `${prevContent}<p>${capitalized}</p>`;
+        }
+
+        setHasUnsavedChanges(true);
+        scheduleAutoSave(updatedContent, mood);
+        return updatedContent;
+      });
+    },
+    [mood, scheduleAutoSave]
+  );
+
+  const {
+    isRecording,
+    isTranscribing,
+    duration: recordingDuration,
+    stream: recordingStream,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+  } = useAudioRecorder({
+    onTranscription: handleWhisperTranscription,
+  });
+
+  // Global Keyboard Shortcut: Alt + V or Ctrl + Shift + V toggles recording, Esc cancels
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isAltV = e.altKey && (e.key === "v" || e.key === "V");
+      const isCtrlShiftV = (e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "v" || e.key === "V");
+
+      if (isAltV || isCtrlShiftV) {
+        e.preventDefault();
+        if (isRecording) {
+          stopRecording();
+        } else if (!isTranscribing) {
+          startRecording();
+        }
+      } else if (e.key === "Escape" && isRecording) {
+        e.preventDefault();
+        cancelRecording();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isRecording, isTranscribing, startRecording, stopRecording, cancelRecording]);
+
+  // Cancel recording only when the selected date actually changes
+  const activeRecordDateRef = useRef(selectedDate);
+  useEffect(() => {
+    if (activeRecordDateRef.current !== selectedDate) {
+      activeRecordDateRef.current = selectedDate;
+      if (isRecording) {
+        cancelRecording();
+      }
+    }
+  }, [selectedDate, isRecording, cancelRecording]);
 
   const handleMoodSelect = (newMood: string) => {
     setMood(newMood);
@@ -408,7 +488,7 @@ export default function DiaryPage() {
           </aside>
 
           {/* Right Editor Canvas */}
-          <main className="flex-1 flex flex-col bg-card/80 backdrop-blur-xl border border-border/50 rounded-2xl shadow-xl h-full overflow-hidden min-w-0">
+          <main className="relative flex-1 flex flex-col bg-card/80 backdrop-blur-xl border border-border/50 rounded-2xl shadow-xl h-full overflow-hidden min-w-0 min-h-0">
             {/* Header Control Bar */}
             <div className="px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-border/40 bg-card/40 shrink-0">
               
@@ -449,6 +529,52 @@ export default function DiaryPage() {
 
               {/* Action Buttons & Tools */}
               <div className="flex items-center gap-2">
+                {/* Voice Recording Button */}
+                <button
+                  type="button"
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isTranscribing}
+                  className={cn(
+                    "h-8 px-2.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer disabled:opacity-50",
+                    isRecording
+                      ? "border-red-500/50 bg-red-500/15 text-red-500 hover:bg-red-500/25 shadow-xs shadow-red-500/20 animate-pulse"
+                      : isTranscribing
+                      ? "border-amber-500/50 bg-amber-500/15 text-amber-500"
+                      : "border-border/40 hover:border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  )}
+                  title={
+                    isRecording
+                      ? "Stop recording and transcribe with Whisper"
+                      : isTranscribing
+                      ? "Transcribing with Whisper AI..."
+                      : "Record voice note with Whisper AI"
+                  }
+                >
+                  {isTranscribing ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin text-amber-500" />
+                      <span className="hidden sm:inline font-mono">Transcribing…</span>
+                    </>
+                  ) : isRecording ? (
+                    <>
+                      <span className="size-2 rounded-full bg-red-500 animate-ping" />
+                      <Mic className="size-3.5 text-red-500" />
+                      <span className="font-mono">
+                        {Math.floor(recordingDuration / 60)
+                          .toString()
+                          .padStart(2, "0")}
+                        :
+                        {(recordingDuration % 60).toString().padStart(2, "0")}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="size-3.5" />
+                      <span className="hidden sm:inline">Voice</span>
+                    </>
+                  )}
+                </button>
+
                 {/* Writing Prompt Generator Button */}
                 <button
                   onClick={handleInsertPrompt}
@@ -602,7 +728,7 @@ export default function DiaryPage() {
             </div>
 
             {/* Quill Canvas Scroll Container */}
-            <div className="flex-1 overflow-y-auto px-4 md:px-10 py-4 custom-scrollbar select-text">
+            <div className="flex-1 overflow-y-auto min-h-0 px-4 md:px-10 py-4 custom-scrollbar select-text">
               <div className="max-w-4xl mx-auto space-y-4">
                 <QuillEditor
                   value={content}
@@ -611,6 +737,95 @@ export default function DiaryPage() {
                 />
               </div>
             </div>
+
+            {/* Sticky Floating Voice Recording Island */}
+            {(isRecording || isTranscribing) && (
+              <div
+                role="region"
+                aria-label="Voice recording controls"
+                className={cn(
+                  "pointer-events-auto absolute bottom-6 left-1/2 -translate-x-1/2 z-30",
+                  "w-[92%] sm:w-auto sm:min-w-[420px] max-w-xl px-4 py-2.5 rounded-2xl sm:rounded-full",
+                  "bg-card/95 backdrop-blur-2xl border shadow-2xl ring-1",
+                  "flex items-center justify-between gap-3 sm:gap-5",
+                  "animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-250 ease-out",
+                  isTranscribing
+                    ? "border-amber-500/40 ring-amber-500/20 shadow-amber-500/10"
+                    : "border-red-500/30 ring-red-500/15 shadow-red-500/15"
+                )}
+              >
+                {isTranscribing ? (
+                  <div className="flex items-center gap-3 w-full justify-between sm:justify-start">
+                    <div className="size-8 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                      <Loader2 className="size-4 animate-spin text-amber-500" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Sparkles className="size-3.5 text-amber-500 shrink-0" />
+                        <span className="truncate">Transcribing audio with Whisper AI…</span>
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        Converting speech into diary entry
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-amber-500/90 bg-amber-500/10 px-2.5 py-0.5 rounded-full font-bold shrink-0">
+                      Processing
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Live Pulse Indicator & Timer */}
+                      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-full shrink-0">
+                        <span className="relative flex size-2 shrink-0">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                          <span className="relative inline-flex rounded-full size-2 bg-red-600" />
+                        </span>
+                        <span className="font-mono text-xs font-bold text-red-500 tracking-wider">
+                          {Math.floor(recordingDuration / 60)
+                            .toString()
+                            .padStart(2, "0")}
+                          :
+                          {(recordingDuration % 60).toString().padStart(2, "0")}
+                        </span>
+                      </div>
+
+                      {/* Live Audio Visualizer Waveform */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <AudioVisualizer
+                          stream={recordingStream}
+                          isRecording={isRecording}
+                          barCount={16}
+                          className="h-6 w-20 sm:w-28"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Actions: Cancel & Done */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={cancelRecording}
+                        className="h-8 px-3 rounded-full border border-border/50 hover:bg-muted/70 text-muted-foreground hover:text-foreground text-xs font-medium transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                        title="Discard recording (Esc)"
+                      >
+                        <X className="size-3.5" />
+                        <span className="hidden sm:inline">Cancel</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopRecording}
+                        className="h-8 px-3.5 rounded-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-semibold shadow-md shadow-red-600/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                        title="Finish and transcribe into diary (Alt+V)"
+                      >
+                        <Check className="size-3.5 stroke-[2.5]" />
+                        <span>Done</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </main>
         </div>
       </div>

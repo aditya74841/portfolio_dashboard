@@ -201,6 +201,7 @@ export function QuillEditor({ value, onChange, placeholder }: QuillEditorProps) 
         .qe .ql-container {
           font-size: 15.5px;
           line-height: 1.8;
+          height: auto !important;
         }
 
         .qe .ql-editor {
@@ -208,6 +209,9 @@ export function QuillEditor({ value, onChange, placeholder }: QuillEditorProps) 
           color: var(--foreground);
           caret-color: var(--foreground);
           outline: none !important;
+          height: auto !important;
+          min-height: 350px;
+          overflow-y: visible !important;
         }
 
         .qe .ql-editor.ql-blank::before {
