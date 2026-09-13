@@ -1,13 +1,29 @@
 "use client";
 
-import { useRef } from "react";
+import {
+  useRef,
+  useCallback,
+  useImperativeHandle,
+  forwardRef,
+  useEffect,
+} from "react";
 import ReactQuill, { Quill } from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 
-interface QuillEditorProps {
+export interface QuillEditorHandle {
+  focus: () => void;
+  setCursorToEnd: () => void;
+  insertHtmlAtEnd: (html: string) => void;
+  insertHtmlAtCursor: (html: string) => void;
+  getEditor: () => any;
+}
+
+export interface QuillEditorProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  editorRef?: React.MutableRefObject<QuillEditorHandle | null>;
+  onEditorReady?: (handle: QuillEditorHandle) => void;
 }
 
 const FONT_SIZES = ["10px", "12px", "14px", "16px", "18px", "20px", "24px", "32px"];
@@ -31,8 +47,85 @@ const TOOLBAR_OPTIONS = [
   ["clean"],
 ];
 
-export function QuillEditor({ value, onChange, placeholder }: QuillEditorProps) {
-  const quillRef = useRef<ReactQuill>(null);
+export const QuillEditor = forwardRef<QuillEditorHandle, QuillEditorProps>(
+  function QuillEditor(
+    { value, onChange, placeholder, editorRef, onEditorReady },
+    ref
+  ) {
+    const quillRef = useRef<ReactQuill>(null);
+
+    const getEditorHandle = useCallback((): QuillEditorHandle => {
+      return {
+        focus: () => {
+          quillRef.current?.getEditor()?.focus();
+        },
+        setCursorToEnd: () => {
+          const editor = quillRef.current?.getEditor();
+          if (!editor) return;
+          editor.focus();
+          const length = editor.getLength();
+          editor.setSelection(length, 0, "user");
+          editor.scrollIntoView();
+        },
+        insertHtmlAtEnd: (html: string) => {
+          const editor = quillRef.current?.getEditor();
+          if (!editor) return;
+
+          editor.focus();
+          const isEmpty = editor.getText().trim() === "";
+          if (isEmpty) {
+            editor.setContents([], "silent");
+            editor.clipboard.dangerouslyPasteHTML(0, html, "user");
+          } else {
+            const length = editor.getLength();
+            editor.clipboard.dangerouslyPasteHTML(length, html, "user");
+          }
+
+          const newLength = editor.getLength();
+          editor.setSelection(newLength, 0, "user");
+          editor.focus();
+          editor.scrollIntoView();
+
+          const newHtml = editor.root.innerHTML;
+          onChange(newHtml);
+        },
+        insertHtmlAtCursor: (html: string) => {
+          const editor = quillRef.current?.getEditor();
+          if (!editor) return;
+
+          editor.focus();
+          const range = editor.getSelection();
+          const insertIndex = range ? range.index : editor.getLength();
+          editor.clipboard.dangerouslyPasteHTML(insertIndex, html, "user");
+
+          const newLength = editor.getLength();
+          editor.setSelection(newLength, 0, "user");
+          editor.focus();
+          editor.scrollIntoView();
+
+          const newHtml = editor.root.innerHTML;
+          onChange(newHtml);
+        },
+        getEditor: () => quillRef.current?.getEditor() || null,
+      };
+    }, [onChange]);
+
+    useImperativeHandle(ref, getEditorHandle, [getEditorHandle]);
+
+    useEffect(() => {
+      const handle = getEditorHandle();
+      if (editorRef) {
+        editorRef.current = handle;
+      }
+      if (onEditorReady) {
+        onEditorReady(handle);
+      }
+      return () => {
+        if (editorRef) {
+          editorRef.current = null;
+        }
+      };
+    }, [editorRef, onEditorReady, getEditorHandle]);
 
   const changeFontSize = (direction: "increase" | "decrease") => {
     const quill = quillRef.current?.getEditor();
@@ -408,4 +501,4 @@ export function QuillEditor({ value, onChange, placeholder }: QuillEditorProps) 
       </div>
     </>
   );
-}
+});

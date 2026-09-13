@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { AudioVisualizer } from "@/components/diary/audio-visualizer";
 import { toast } from "sonner";
+import type { QuillEditorHandle } from "@/components/notes/QuillEditor";
 
 // Dynamically import Quill to avoid SSR issues
 const QuillEditor = dynamic(
@@ -85,9 +86,23 @@ function formatDisplayDate(dateStr: string): string {
   return dateStr;
 }
 
-function stripHtml(html: string): string {
+function stripHtml(html: string, excludePrompts = false): string {
   if (!html) return "";
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  let processed = html;
+  if (excludePrompts) {
+    // Exclude reflection prompt templates so prompt questions don't inflate user word count
+    processed = processed.replace(/<p><strong>💡 Reflection Prompt:<\/strong>.*?<\/p>/gi, " ");
+  }
+  return processed
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export default function DiaryPage() {
@@ -124,6 +139,19 @@ export default function DiaryPage() {
   const prevDateRef = useRef<string | null>(null);
   const loadedDateRef = useRef<string | null>(null);
   const isSavingRef = useRef(false);
+  const quillEditorRef = useRef<QuillEditorHandle | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = useCallback((smooth = true) => {
+    setTimeout(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTo({
+          top: scrollContainerRef.current.scrollHeight,
+          behavior: smooth ? "smooth" : "auto",
+        });
+      }
+    }, 60);
+  }, []);
 
   // Initial load
   useEffect(() => {
@@ -250,23 +278,29 @@ export default function DiaryPage() {
     (text: string) => {
       if (!text || !text.trim()) return;
 
-      setContent((prevContent) => {
-        let updatedContent = "";
-        const trimmed = text.trim();
-        const capitalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+      const trimmed = text.trim();
+      const capitalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+      const formattedHtml = `<p>${capitalized}</p>`;
 
-        if (!prevContent || prevContent === "<p><br></p>" || prevContent === "<p></p>") {
-          updatedContent = `<p>${capitalized}</p>`;
-        } else {
-          updatedContent = `${prevContent}<p>${capitalized}</p>`;
-        }
+      if (quillEditorRef.current) {
+        quillEditorRef.current.insertHtmlAtEnd(formattedHtml);
+      } else {
+        setContent((prevContent) => {
+          let updatedContent = "";
+          if (!prevContent || prevContent === "<p><br></p>" || prevContent === "<p></p>") {
+            updatedContent = formattedHtml;
+          } else {
+            updatedContent = `${prevContent}${formattedHtml}`;
+          }
+          setHasUnsavedChanges(true);
+          scheduleAutoSave(updatedContent, mood);
+          return updatedContent;
+        });
+      }
 
-        setHasUnsavedChanges(true);
-        scheduleAutoSave(updatedContent, mood);
-        return updatedContent;
-      });
+      scrollToBottom();
     },
-    [mood, scheduleAutoSave]
+    [mood, scheduleAutoSave, scrollToBottom]
   );
 
   const {
@@ -348,8 +382,15 @@ export default function DiaryPage() {
   const handleInsertPrompt = () => {
     const prompt = WRITING_PROMPTS[currentPromptIndex];
     const formattedPrompt = `<p><strong>💡 Reflection Prompt:</strong> <em>${prompt}</em></p><p><br></p>`;
-    const updatedContent = content ? content + formattedPrompt : formattedPrompt;
-    handleContentChange(updatedContent);
+
+    if (quillEditorRef.current) {
+      quillEditorRef.current.insertHtmlAtEnd(formattedPrompt);
+    } else {
+      const updatedContent = content ? content + formattedPrompt : formattedPrompt;
+      handleContentChange(updatedContent);
+    }
+
+    scrollToBottom();
     setCurrentPromptIndex((prev) => (prev + 1) % WRITING_PROMPTS.length);
     toast.success("Writing prompt added!");
   };
@@ -380,7 +421,7 @@ export default function DiaryPage() {
   const todayStr = getTodayDateString();
   const isToday = selectedDate === todayStr;
 
-  const plainText = useMemo(() => stripHtml(content), [content]);
+  const plainText = useMemo(() => stripHtml(content, true), [content]);
   const wordCount = useMemo(() => (plainText ? plainText.split(/\s+/).filter(Boolean).length : 0), [plainText]);
   const readTimeMinutes = useMemo(() => Math.max(1, Math.ceil(wordCount / 200)), [wordCount]);
 
@@ -453,11 +494,12 @@ export default function DiaryPage() {
               ) : (
                 filteredEntries.map((e) => {
                   const isSelected = selectedDate === e.date;
-                  const moodObj = MOOD_OPTIONS.find((m) => m.label === e.mood) || MOOD_OPTIONS[0];
+                  const moodObj = MOOD_OPTIONS.find((m) => m.label === (isSelected ? mood : e.mood)) || MOOD_OPTIONS[0];
+                  const cardWordCount = isSelected ? wordCount : (e.wordCount || 0);
 
                   return (
                     <div
-                      key={e._id}
+                      key={e._id || e.date}
                       onClick={() => handleSelectDate(e.date)}
                       className={cn(
                         "w-full text-left px-3 py-2.5 rounded-xl transition-all cursor-pointer border flex items-center justify-between gap-2",
@@ -474,7 +516,7 @@ export default function DiaryPage() {
                           </h3>
                         </div>
                         <p className="text-[11px] text-muted-foreground/60 truncate mt-0.5">
-                          {e.wordCount > 0 ? `${e.wordCount} words` : "Empty page"}
+                          {cardWordCount > 0 ? `${cardWordCount} words` : "Empty page"}
                         </p>
                       </div>
                       <span className="text-[10px] text-muted-foreground/50 font-mono">
@@ -728,9 +770,13 @@ export default function DiaryPage() {
             </div>
 
             {/* Quill Canvas Scroll Container */}
-            <div className="flex-1 overflow-y-auto min-h-0 px-4 md:px-10 py-4 custom-scrollbar select-text">
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto min-h-0 px-4 md:px-10 py-4 custom-scrollbar select-text"
+            >
               <div className="max-w-4xl mx-auto space-y-4">
                 <QuillEditor
+                  editorRef={quillEditorRef}
                   value={content}
                   onChange={handleContentChange}
                   placeholder="What's on your mind today? Write your thoughts, ideas, or reflections here…"

@@ -34,7 +34,18 @@ export const shiftDateString = (dateStr: string, days: number): string => {
 // Helper to compute plain text word count from HTML string
 export const calculateWordCount = (html: string = ""): number => {
   if (!html) return 0;
-  const plainText = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  // Exclude reflection prompt template so prompt questions don't inflate user word count
+  const withoutPrompts = html.replace(/<p><strong>💡 Reflection Prompt:<\/strong>.*?<\/p>/gi, " ");
+  const plainText = withoutPrompts
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!plainText) return 0;
   return plainText.split(/\s+/).filter(Boolean).length;
 };
