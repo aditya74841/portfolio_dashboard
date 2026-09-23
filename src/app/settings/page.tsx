@@ -24,6 +24,7 @@ export default function SettingsPage() {
 
   // PIN change
   const [newPin, setNewPin] = useState("");
+  const [currentPin, setCurrentPin] = useState("");
   const [pinLoading, setPinLoading] = useState(false);
 
   // Name change
@@ -99,11 +100,12 @@ export default function SettingsPage() {
 
   const handlePinChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPin || newPin.length !== 4) return;
+    if (!newPin || newPin.length !== 4 || (user?.hasPin && currentPin.length !== 4)) return;
     setPinLoading(true);
     try {
-      await setPin(newPin);
+      await setPin(newPin, user?.hasPin ? currentPin : undefined);
       setNewPin("");
+      setCurrentPin("");
     } catch { /* handled by store */ }
     setPinLoading(false);
   };
@@ -200,7 +202,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs uppercase tracking-wider text-muted-foreground">New Password</Label>
-                    <Input type={showPasswords ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min. 6 characters" className="h-11 bg-background/50" />
+                    <Input type={showPasswords ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min. 8 characters" className="h-11 bg-background/50" />
                   </div>
                   <Button type="submit" disabled={passwordLoading || !currentPassword || !newPassword} className="h-10">
                     {passwordLoading ? <Loader2 className="size-4 animate-spin" /> : "Update Password"}
@@ -217,11 +219,15 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handlePinChange} className="space-y-4">
+                  {user?.hasPin && <div className="space-y-2">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Current 4-Digit PIN</Label>
+                    <Input type="password" maxLength={4} pattern="\d{4}" value={currentPin} onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="h-11 bg-background/50 w-40 text-center text-2xl tracking-[0.5em]" />
+                  </div>}
                   <div className="space-y-2">
                     <Label className="text-xs uppercase tracking-wider text-muted-foreground">New 4-Digit PIN</Label>
                     <Input type="password" maxLength={4} pattern="\d{4}" value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))} placeholder="••••" className="h-11 bg-background/50 w-40 text-center text-2xl tracking-[0.5em]" />
                   </div>
-                  <Button type="submit" disabled={pinLoading || newPin.length !== 4} className="h-10 bg-emerald-600 hover:bg-emerald-700">
+                  <Button type="submit" disabled={pinLoading || newPin.length !== 4 || (Boolean(user?.hasPin) && currentPin.length !== 4)} className="h-10 bg-emerald-600 hover:bg-emerald-700">
                     {pinLoading ? <Loader2 className="size-4 animate-spin" /> : (user?.hasPin ? "Update PIN" : "Set PIN")}
                   </Button>
                 </form>

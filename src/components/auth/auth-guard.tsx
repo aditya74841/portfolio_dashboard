@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/use-auth-store";
 import { PinUnlockScreen } from "@/components/auth/pin-unlock-screen";
@@ -16,52 +16,49 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const {
     isAuthenticated,
     isPinVerified,
-    pinExpiresAt,
     checkSession,
     checkPinSession,
-    checkPinSessionFromServer,
     user,
+    touchPinSession,
   } = useAuthStore();
 
   const [loading, setLoading] = useState(true);
   const [pinExpired, setPinExpired] = useState(false);
-  const [sessionChecked, setSessionChecked] = useState(false);
 
   const isPublicPath = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
-  // Initial session check
+  // Remove a previously persisted bearer token from older dashboard versions.
+  useEffect(() => { localStorage.removeItem("auth-storage"); }, []);
+
   useEffect(() => {
-    const init = async () => {
-      if (isAuthenticated && !sessionChecked) {
-        setLoading(true);
-        // Make sure we have the latest user data if missing
-        if (!user) {
-          await checkSession();
-        }
+    const onSessionExpired = () => useAuthStore.setState({ user: null, isAuthenticated: false, isPinVerified: false, pinExpiresAt: null });
+    const onPinExpired = () => { setPinExpired(true); useAuthStore.setState({ isPinVerified: false, pinExpiresAt: null }); };
+    window.addEventListener("dashboard:session-expired", onSessionExpired);
+    window.addEventListener("dashboard:pin-session-expired", onPinExpired);
+    return () => { window.removeEventListener("dashboard:session-expired", onSessionExpired); window.removeEventListener("dashboard:pin-session-expired", onPinExpired); };
+  }, []);
 
-        // Check PIN session from server to restore active unlock state
-        const pinStatus = await checkPinSessionFromServer();
-
-        if (!pinStatus.isValid && pinStatus.hasPin) {
-          setPinExpired(true);
-        }
-        setSessionChecked(true);
-        setLoading(false);
-      } else if (!isAuthenticated) {
+  // Validate the HTTP-only login and restore only a still-valid server-side PIN unlock after refresh.
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    checkSession().finally(() => {
+      if (active) {
         setLoading(false);
       }
-    };
+    });
+    return () => { active = false; };
+  }, [checkSession]);
 
-    init();
-  }, [isAuthenticated, user, sessionChecked, checkSession, checkPinSessionFromServer]);
-
-  // 10-minute rolling inactivity PIN lock timer
+  // Ten-minute rolling PIN unlock; activity renews the server session as well.
   useEffect(() => {
     if (!isAuthenticated || !isPinVerified) return;
 
     const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
     let timerId: NodeJS.Timeout;
     let lastReset = Date.now();
+    let lastServerTouch = Date.now();
+    let touchPending = false;
 
     const resetTimer = () => {
       if (timerId) clearTimeout(timerId);
@@ -80,6 +77,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       if (now - lastReset > 1000) {
         lastReset = now;
         resetTimer();
+        if (now - lastServerTouch >= 2 * 60 * 1000 && !touchPending) {
+          touchPending = true;
+          touchPinSession()
+            .then(() => { lastServerTouch = Date.now(); })
+            .catch(() => { useAuthStore.setState({ isPinVerified: false, pinExpiresAt: null }); })
+            .finally(() => { touchPending = false; });
+        }
       }
     };
 
@@ -101,7 +105,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       events.forEach((evt) => window.removeEventListener(evt, handleActivity));
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isAuthenticated, isPinVerified]);
+  }, [isAuthenticated, isPinVerified, touchPinSession]);
 
   // Handle routing in a useEffect to prevent state updates during render
   useEffect(() => {

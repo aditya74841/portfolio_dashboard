@@ -1,6 +1,5 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { apiFetch, API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
 
 interface User {
@@ -16,7 +15,6 @@ interface User {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
   isPinVerified: boolean;
   pinExpiresAt: number | null; // timestamp ms
@@ -26,14 +24,14 @@ interface AuthState {
   loginWithEmail: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (googleToken: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
-  checkSession: () => Promise<void>;
+  logout: () => Promise<void>;
+  checkSession: () => Promise<boolean>;
 
   // PIN
-  setPin: (pin: string) => Promise<void>;
+  setPin: (pin: string, currentPin?: string) => Promise<void>;
   verifyPin: (pin: string) => Promise<void>;
   checkPinSession: () => boolean;
-  checkPinSessionFromServer: () => Promise<{ hasPin: boolean; isValid: boolean }>;
+  touchPinSession: () => Promise<void>;
 
   // Profile
   forgotPassword: (email: string) => Promise<void>;
@@ -44,12 +42,9 @@ interface AuthState {
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set, get) => ({
+export const useAuthStore = create<AuthState>()((set, get) => ({
       user: null,
-      token: null,
-      isAuthenticated: false,
+          isAuthenticated: false,
       isPinVerified: false,
       pinExpiresAt: null,
       isLoading: false,
@@ -60,14 +55,13 @@ export const useAuthStore = create<AuthState>()(
       loginWithEmail: async (email: string, password: string) => {
         set({ isLoading: true });
         try {
-          const data = await apiFetch<{ user: User; token: string }>("/auth/email-login", {
+          const data = await apiFetch<{ user: User }>("/auth/email-login", {
             method: "POST",
             body: JSON.stringify({ email, password }),
           });
 
           set({
             user: data.user,
-            token: data.token,
             isAuthenticated: true,
             isPinVerified: false,
             pinExpiresAt: null,
@@ -89,14 +83,13 @@ export const useAuthStore = create<AuthState>()(
       loginWithGoogle: async (googleToken: string) => {
         set({ isLoading: true });
         try {
-          const data = await apiFetch<{ user: User; token: string }>("/auth/google", {
+          const data = await apiFetch<{ user: User }>("/auth/google", {
             method: "POST",
             body: JSON.stringify({ token: googleToken }),
           });
 
           set({
             user: data.user,
-            token: data.token,
             isAuthenticated: true,
             isPinVerified: false,
             pinExpiresAt: null,
@@ -118,15 +111,14 @@ export const useAuthStore = create<AuthState>()(
       register: async (name: string, email: string, password: string) => {
         set({ isLoading: true });
         try {
-          const data = await apiFetch<{ user: User; token: string }>("/auth/register", {
+          const data = await apiFetch<{ user: User }>("/auth/register", {
             method: "POST",
             body: JSON.stringify({ name, email, password }),
           });
 
           set({
             user: data.user,
-            token: data.token,
-            isAuthenticated: true,
+              isAuthenticated: true,
             isPinVerified: false,
             pinExpiresAt: null,
             isLoading: false,
@@ -144,12 +136,11 @@ export const useAuthStore = create<AuthState>()(
       // -----------------------------------------------------------------------
       // Logout
       // -----------------------------------------------------------------------
-      logout: () => {
-        // Fire and forget server logout
-        apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
+      logout: async () => {
+        // Clear server session and HTTP-only cookie through the proxy.
+        await apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
         set({
           user: null,
-          token: null,
           isAuthenticated: false,
           isPinVerified: false,
           pinExpiresAt: null,
@@ -161,32 +152,39 @@ export const useAuthStore = create<AuthState>()(
       // Check Session (on page load)
       // -----------------------------------------------------------------------
       checkSession: async () => {
-        const state = get();
-        if (!state.token) return;
-
         try {
           const user = await apiFetch<User>("/auth/me");
-          set({ user, isAuthenticated: true });
+          let isPinVerified = false;
+          let pinExpiresAt: number | null = null;
+          try {
+            const pinSession = await apiFetch<{ isValid: boolean; pinSessionExpiresAt: string | null }>("/auth/pin-session");
+            if (pinSession.isValid && pinSession.pinSessionExpiresAt) {
+              const expiry = new Date(pinSession.pinSessionExpiresAt).getTime();
+              if (Number.isFinite(expiry) && expiry > Date.now()) {
+                isPinVerified = true;
+                pinExpiresAt = expiry;
+              }
+            }
+          } catch {
+            // Keep a valid login, but require PIN again if unlock status cannot be checked.
+          }
+          set({ user, isAuthenticated: true, isPinVerified, pinExpiresAt });
+          return true;
         } catch {
-          set({
-            user: null,
-            token: null,
-            isAuthenticated: false,
-            isPinVerified: false,
-            pinExpiresAt: null,
-          });
+          set({ user: null, isAuthenticated: false, isPinVerified: false, pinExpiresAt: null });
+          return false;
         }
       },
 
       // -----------------------------------------------------------------------
       // Set PIN
       // -----------------------------------------------------------------------
-      setPin: async (pin: string) => {
+      setPin: async (pin: string, currentPin?: string) => {
         set({ isLoading: true });
         try {
           await apiFetch("/auth/set-pin", {
             method: "POST",
-            body: JSON.stringify({ pin }),
+            body: JSON.stringify({ pin, ...(currentPin ? { currentPin } : {}) }),
           });
 
           // After setting PIN, also verify it to start a session
@@ -219,24 +217,18 @@ export const useAuthStore = create<AuthState>()(
       verifyPin: async (pin: string) => {
         set({ isLoading: true });
         try {
-          const data = await apiFetch<{ pinSessionExpiresAt: string }>("/auth/verify-pin", {
-            method: "POST",
-            body: JSON.stringify({ pin }),
-          });
-
-          const expiresAt = new Date(data.pinSessionExpiresAt).getTime();
-
-          set({
-            isPinVerified: true,
-            pinExpiresAt: expiresAt,
-            isLoading: false,
-          });
-
-          toast.success("Welcome back, Chief.");
+          const data = await apiFetch<{ pinSessionExpiresAt: string }>("/auth/verify-pin", { method: "POST", body: JSON.stringify({ pin }) });
+          set({ isPinVerified: true, pinExpiresAt: new Date(data.pinSessionExpiresAt).getTime(), isLoading: false });
+          toast.success("PIN verified.");
         } catch (error) {
-          set({ isLoading: false });
           const message = error instanceof Error ? error.message : "Invalid PIN";
-          toast.error(message);
+          if (message.startsWith("Not authorized")) {
+            set({ user: null, isAuthenticated: false, isPinVerified: false, pinExpiresAt: null, isLoading: false });
+            toast.error("Your login session expired. Sign in again.");
+          } else {
+            set({ isLoading: false });
+            toast.error(message);
+          }
           throw error;
         }
       },
@@ -250,25 +242,14 @@ export const useAuthStore = create<AuthState>()(
         return Date.now() < state.pinExpiresAt;
       },
 
-      // -----------------------------------------------------------------------
-      // Check PIN Session (server)
-      // -----------------------------------------------------------------------
-      checkPinSessionFromServer: async () => {
+      // Renew the server-side unlock session while the user is active.
+      touchPinSession: async () => {
         try {
-          const data = await apiFetch<{ hasPin: boolean; isValid: boolean; pinSessionExpiresAt: string | null }>(
-            "/auth/pin-session"
-          );
-
-          if (data.isValid && data.pinSessionExpiresAt) {
-            const expiresAt = new Date(data.pinSessionExpiresAt).getTime();
-            set({ isPinVerified: true, pinExpiresAt: expiresAt });
-          } else {
-            set({ isPinVerified: false, pinExpiresAt: null });
-          }
-
-          return { hasPin: data.hasPin, isValid: data.isValid };
-        } catch {
-          return { hasPin: false, isValid: false };
+          const data = await apiFetch<{ pinSessionExpiresAt: string }>("/auth/pin-session/touch", { method: "POST" });
+          set({ pinExpiresAt: new Date(data.pinSessionExpiresAt).getTime(), isPinVerified: true });
+        } catch (error) {
+          set({ isPinVerified: false, pinExpiresAt: null });
+          throw error;
         }
       },
 
@@ -320,26 +301,11 @@ export const useAuthStore = create<AuthState>()(
         try {
           const formData = new FormData();
           formData.append("avatar", file);
-
-          // Use raw fetch for FormData (no Content-Type header — browser sets it)
-          const authState = typeof window !== "undefined" ? localStorage.getItem("auth-storage") : null;
-          const token = authState ? JSON.parse(authState).state?.token : null;
-
-          const response = await fetch(`${API_BASE_URL}/auth/avatar`, {
-            method: "PUT",
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-            body: formData,
-          });
-
-          const result = await response.json();
-
-          if (!response.ok) {
-            throw new Error(result.message || "Failed to update avatar");
-          }
+          const result = await apiFetch<{ avatar: string }>("/auth/avatar", { method: "PUT", body: formData });
 
           set((prev) => ({
             isLoading: false,
-            user: prev.user ? { ...prev.user, avatar: result.data.avatar } : null,
+            user: prev.user ? { ...prev.user, avatar: result.avatar } : null,
           }));
 
           toast.success("Avatar updated!");
@@ -381,12 +347,9 @@ export const useAuthStore = create<AuthState>()(
       changePassword: async (currentPassword: string, newPassword: string) => {
         set({ isLoading: true });
         try {
-          await apiFetch("/auth/change-password", {
-            method: "PUT",
-            body: JSON.stringify({ currentPassword, newPassword }),
-          });
-          set({ isLoading: false });
-          toast.success("Password changed successfully!");
+          await apiFetch("/auth/change-password", { method: "PUT", body: JSON.stringify({ currentPassword, newPassword }) });
+          set({ user: null, isAuthenticated: false, isPinVerified: false, pinExpiresAt: null, isLoading: false });
+          toast.success("Password changed. Sign in again with your new password.");
         } catch (error) {
           set({ isLoading: false });
           const message = error instanceof Error ? error.message : "Failed to change password";
@@ -413,17 +376,4 @@ export const useAuthStore = create<AuthState>()(
           throw error;
         }
       },
-    }),
-    {
-      name: "auth-storage",
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        user: state.user,
-        token: state.token,
-        isAuthenticated: state.isAuthenticated,
-        isPinVerified: state.isPinVerified,
-        pinExpiresAt: state.pinExpiresAt,
-      }),
-    }
-  )
-);
+    }));

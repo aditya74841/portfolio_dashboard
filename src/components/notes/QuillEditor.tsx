@@ -39,7 +39,7 @@ if (typeof window !== "undefined" && Quill) {
 const TOOLBAR_OPTIONS = [
   [{ header: [1, 2, 3, false] }],
   [{ size: ["10px", "12px", false, "16px", "18px", "20px", "24px", "32px"] }],
-  [{ list: "ordered" }, { list: "bullet" }],
+  [{ list: "ordered" }, { list: "bullet" }, { list: "check" }],
   [{ align: [] }],
   ["blockquote", "code-block"],
   [{ color: [] }, { background: [] }],
@@ -147,6 +147,21 @@ export const QuillEditor = forwardRef<QuillEditorHandle, QuillEditorProps>(
     } else {
       quill.format("size", targetSize);
     }
+  };
+
+  const handleListToolbar = (value: string | false) => {
+    const editor = quillRef.current?.getEditor();
+    if (!editor) return;
+
+    const range = editor.getSelection(true);
+    if (value === "check") {
+      const currentList = editor.getFormat(range || undefined).list;
+      const nextList = currentList === "checked" || currentList === "unchecked" ? false : "unchecked";
+      editor.format("list", nextList, "user");
+      return;
+    }
+
+    editor.format("list", value, "user");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -390,6 +405,16 @@ export const QuillEditor = forwardRef<QuillEditorHandle, QuillEditorProps>(
           margin-bottom: 0.25rem;
         }
 
+        .qe .ql-editor li[data-list="checked"] {
+          color: var(--muted-foreground);
+          text-decoration: line-through;
+        }
+
+        .qe .ql-editor li[data-list="checked"] > .ql-ui::before,
+        .qe .ql-editor li[data-list="unchecked"] > .ql-ui::before {
+          color: var(--primary);
+        }
+
         .qe .ql-editor img {
           max-width: 100%;
           border-radius: 10px;
@@ -486,7 +511,12 @@ export const QuillEditor = forwardRef<QuillEditorHandle, QuillEditorProps>(
             }
           }}
           placeholder={placeholder || "Write something…"}
-          modules={{ toolbar: TOOLBAR_OPTIONS }}
+          modules={{
+            toolbar: {
+              container: TOOLBAR_OPTIONS,
+              handlers: { list: handleListToolbar },
+            },
+          }}
           formats={[
             "header",
             "size",

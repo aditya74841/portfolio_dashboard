@@ -26,7 +26,7 @@ function ResetPasswordForm() {
     e.preventDefault();
     setError("");
     if (!password || !confirmPassword) { setError("Please fill in all fields."); return; }
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords do not match."); return; }
     try {
       await resetPassword(token, password);
@@ -73,7 +73,7 @@ function ResetPasswordForm() {
               <Label htmlFor="password" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">New Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input id="password" type={showPassword ? "text" : "password"} placeholder="Min. 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 pr-10 h-11 bg-background/50" disabled={isLoading} />
+                <Input id="password" type={showPassword ? "text" : "password"} placeholder="Min. 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10 pr-10 h-11 bg-background/50" disabled={isLoading} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>

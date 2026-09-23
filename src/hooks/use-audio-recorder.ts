@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { toast } from "sonner";
-import { API_BASE_URL } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 
 interface UseAudioRecorderOptions {
   onTranscription?: (text: string) => void;
@@ -90,26 +90,13 @@ export function useAudioRecorder({ onTranscription }: UseAudioRecorderOptions = 
         // Send to server Groq Whisper endpoint
         setIsTranscribing(true);
         try {
-          const authState = localStorage.getItem("auth-storage");
-          const token = authState ? JSON.parse(authState).state?.token : null;
-
           const formData = new FormData();
           const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "webm";
           formData.append("audio", audioBlob, `recording.${ext}`);
 
-          const response = await fetch(`${API_BASE_URL}/diary/transcribe`, {
-            method: "POST",
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-            body: formData,
-          });
+          const result = await apiFetch<{ text?: string }>("/diary/transcribe", { method: "POST", body: formData });
 
-          const result = await response.json();
-
-          if (!response.ok) {
-            throw new Error(result.message || "Failed to transcribe audio.");
-          }
-
-          const text = result.data?.text?.trim() || "";
+          const text = result.text?.trim() || "";
           if (text) {
             if (onTranscriptionRef.current) {
               onTranscriptionRef.current(text);
